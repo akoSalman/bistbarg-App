@@ -57,12 +57,26 @@ jobs:
             app/build/outputs/apk/release/*.apk
             app/build/outputs/bundle/release/*.aab
 
+      - name: Prepare download files
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk dist/bistbarg.apk
+          if [ -f app/build/outputs/apk/release/app-release.apk ]; then cp app/build/outputs/apk/release/app-release.apk dist/bistbarg-release.apk; fi
+          if [ -f app/build/outputs/bundle/release/app-release.aab ]; then cp app/build/outputs/bundle/release/app-release.aab dist/bistbarg-release.aab; fi
+
+      # Every push to main becomes a downloadable release, so the latest APK is always at
+      # https://github.com/<owner>/<repo>/releases/latest/download/bistbarg.apk
       - name: Publish GitHub release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            app/build/outputs/apk/debug/*.apk
-            app/build/outputs/apk/release/*.apk
-            app/build/outputs/bundle/release/*.aab
-          fail_on_unmatched_files: false
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('build-{0}', github.run_number) }}
+          name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('Build {0}', github.run_number) }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
+          body: |
+            Download **bistbarg.apk** below and open it on your Android phone
+            (allow "Install unknown apps" if asked).
+
+            Commit: ${{ github.sha }}
+          files: dist/*

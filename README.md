@@ -18,13 +18,11 @@ The app uses the public, read-only [WooCommerce Store API](https://developer.woo
 
 ## Getting the APK
 
-Every push to `main` builds the app with GitHub Actions:
+**Download the latest APK:** https://github.com/akoSalman/bistbarg-App/releases/latest/download/bistbarg.apk
 
-1. Open the **Actions** tab and click the latest **Build Android APK** run.
-2. Download the **bistbarg-debug-apk** artifact (a zip containing `app-debug.apk`).
-3. Copy it to your phone and open it. You may need to allow *Install unknown apps*.
+Open that link on your Android phone, then open the downloaded file. You may need to allow *Install unknown apps*.
 
-To publish a downloadable release, push a tag such as `v1.0.0`. The APK will be attached to a GitHub Release.
+Every push to `main` builds the app with GitHub Actions and publishes it on the [Releases page](https://github.com/akoSalman/bistbarg-App/releases). Pushing a tag such as `v1.0.0` creates a release with that version name.
 
 ## Configuration
 
