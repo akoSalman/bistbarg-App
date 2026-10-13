@@ -14,6 +14,7 @@ import android.graphics.Shader
 import android.graphics.Typeface
 import android.os.SystemClock
 import android.view.View
+import androidx.core.content.res.ResourcesCompat
 import android.view.animation.DecelerateInterpolator
 import android.view.animation.OvershootInterpolator
 import kotlin.math.PI
@@ -54,7 +55,7 @@ class IntroView(context: Context) : View(context) {
     private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val sloganPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER
-        typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+        typeface = Typeface.create(ResourcesCompat.getFont(context, R.font.vazirmatn) ?: Typeface.SANS_SERIF, Typeface.BOLD)
         textSize = dp(19f)
     }
     private val sparkPaint = Paint(Paint.ANTI_ALIAS_FLAG)

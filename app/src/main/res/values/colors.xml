@@ -5,4 +5,7 @@
     <color name="intro_background">#FFFFFF</color>
     <color name="ic_launcher_background">#14120E</color>
     <color name="splash_background">#FFFFFF</color>
+    <color name="gold_dark">#A9831C</color>
+    <color name="ink">#1F1A10</color>
+    <color name="ink_muted">#6B6352</color>
 </resources>

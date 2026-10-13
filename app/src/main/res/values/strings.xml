@@ -6,4 +6,32 @@
     <string name="retry">تلاش دوباره</string>
     <string name="press_back_again">برای خروج دوباره دکمه بازگشت را بزنید</string>
     <string name="intro_slogan">زیبایی، برگ به برگ</string>
+    <string name="back">بازگشت</string>
+    <string name="welcome_title">به خانوادهٔ بیست‌برگ خوش آمدید</string>
+    <string name="welcome_question">می‌خواهید کاربر همیشگی ما شوید؟</string>
+    <string name="welcome_benefit_orders">پیگیری آسان سفارش‌ها</string>
+    <string name="welcome_benefit_fast">خرید سریع‌تر، بدون وارد کردن دوبارهٔ اطلاعات</string>
+    <string name="welcome_benefit_offers">باخبر شدن از تخفیف‌ها و پیشنهادهای ویژه</string>
+    <string name="welcome_yes">بله، عضو می‌شوم</string>
+    <string name="welcome_no">فعلاً نه</string>
+    <string name="have_account_login">قبلاً عضو شده‌اید؟ وارد شوید</string>
+
+    <string name="register_title">ساخت حساب کاربری</string>
+    <string name="register_heading">عضویت در بیست‌برگ</string>
+    <string name="register_subheading">فقط چند ثانیه طول می‌کشد</string>
+    <string name="register_loading">در حال آماده‌سازی فرم…</string>
+    <string name="register_submit">ثبت‌نام</string>
+    <string name="register_submitting">در حال ثبت‌نام…</string>
+    <string name="register_success_title">ثبت‌نام با موفقیت انجام شد</string>
+    <string name="register_success_message">به جمع مشتریان بیست‌برگ خوش آمدید</string>
+    <string name="register_already_logged_in">شما وارد حساب کاربری خود شده‌اید</string>
+    <string name="register_failed">ثبت‌نام انجام نشد. لطفاً اطلاعات را بررسی کنید و دوباره تلاش کنید.</string>
+    <string name="field_required">این فیلد الزامی است</string>
+    <string name="field_invalid_email">ایمیل وارد شده معتبر نیست</string>
+    <string name="field_email">ایمیل</string>
+    <string name="field_username">نام کاربری</string>
+    <string name="field_password">رمز عبور</string>
+    <string name="field_phone">شماره موبایل</string>
+    <string name="field_first_name">نام</string>
+    <string name="field_last_name">نام خانوادگی</string>
 </resources>

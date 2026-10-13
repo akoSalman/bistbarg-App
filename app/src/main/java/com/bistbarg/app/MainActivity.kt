@@ -51,6 +51,14 @@ class MainActivity : ComponentActivity() {
     private var introSequenceDone = false
     private var siteBarsLight: Boolean? = null
 
+    private val memberFlow = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        when (result.data?.getStringExtra(EXTRA_ACTION)) {
+            // Freshly registered (and logged in): reload so the site shows the account.
+            ACTION_REGISTERED -> webView.loadUrl(BuildConfig.STORE_URL)
+            ACTION_LOGIN -> webView.loadUrl(BuildConfig.STORE_URL.trimEnd('/') + BuildConfig.ACCOUNT_PATH)
+        }
+    }
+
     private val filePicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         fileCallback?.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data))
         fileCallback = null
@@ -252,6 +260,11 @@ class MainActivity : ComponentActivity() {
         val view = intro ?: return
         intro = null
         setBarsLight(siteBarsLight ?: true)
+        if (showWelcomeOnce()) {
+            // The welcome screen fades in over the intro; remove the intro behind it.
+            view.postDelayed({ (view.parent as? ViewGroup)?.removeView(view) }, 700)
+            return
+        }
         view.animate()
             .alpha(0f)
             .scaleX(1.08f)
@@ -259,6 +272,17 @@ class MainActivity : ComponentActivity() {
             .setDuration(550)
             .withEndAction { (view.parent as? ViewGroup)?.removeView(view) }
             .start()
+    }
+
+    /** Opens the "become a member" screen the first time the app is used. */
+    private fun showWelcomeOnce(): Boolean {
+        val prefs = getSharedPreferences("app", MODE_PRIVATE)
+        if (prefs.getBoolean(KEY_WELCOME_SHOWN, false)) return false
+        prefs.edit().putBoolean(KEY_WELCOME_SHOWN, true).apply()
+        memberFlow.launch(Intent(this, WelcomeActivity::class.java))
+        @Suppress("DEPRECATION")
+        overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
+        return true
     }
 
     private fun parseCssColor(value: String): Int? {
@@ -321,8 +345,13 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 
-    private companion object {
-        val EXTERNAL_HOSTS = listOf(
+    companion object {
+        const val EXTRA_ACTION = "action"
+        const val ACTION_REGISTERED = "registered"
+        const val ACTION_LOGIN = "login"
+        private const val KEY_WELCOME_SHOWN = "welcome_shown"
+
+        private val EXTERNAL_HOSTS = listOf(
             "instagram.com", "t.me", "telegram.me", "wa.me", "whatsapp.com", "api.whatsapp.com",
             "facebook.com", "twitter.com", "x.com", "youtube.com", "youtu.be", "linkedin.com",
             "eitaa.com", "rubika.ir", "ble.ir", "splus.ir", "aparat.com",

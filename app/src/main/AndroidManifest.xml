@@ -32,5 +32,16 @@
                 <data android:host="www.bistbarg.com" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".WelcomeActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Bistbarg.Native" />
+
+        <activity
+            android:name=".RegisterActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Bistbarg.Native"
+            android:windowSoftInputMode="adjustResize" />
     </application>
 </manifest>

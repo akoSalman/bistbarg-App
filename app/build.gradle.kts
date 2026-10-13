@@ -7,6 +7,7 @@ plugins {
 fun prop(name: String, default: String) = (project.findProperty(name) as String?) ?: default
 
 val storeUrl = prop("STORE_URL", "https://bistbarg.com")
+val accountPath = prop("ACCOUNT_PATH", "/my-account/")
 
 val keystorePath: String? = System.getenv("ANDROID_KEYSTORE_PATH")
 
@@ -22,6 +23,7 @@ android {
         versionName = prop("VERSION_NAME", "1.0.0")
 
         buildConfigField("String", "STORE_URL", "\"$storeUrl\"")
+        buildConfigField("String", "ACCOUNT_PATH", "\"$accountPath\"")
     }
 
     signingConfigs {
@@ -60,4 +62,5 @@ dependencies {
     implementation("androidx.core:core-splashscreen:1.0.1")
     implementation("androidx.activity:activity-ktx:1.9.3")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
+    implementation("com.google.android.material:material:1.12.0")
 }
