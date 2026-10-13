@@ -234,7 +234,7 @@ class MainActivity : ComponentActivity() {
             ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
         )
         intro = view
-        setBarsLight(false)
+        setBarsLight(true) // dark status bar icons on the white intro
         // Never keep people waiting on a slow connection.
         view.postDelayed({ dismissIntro() }, 9000)
     }

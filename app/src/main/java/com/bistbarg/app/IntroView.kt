@@ -22,7 +22,7 @@ import kotlin.math.sin
 import kotlin.random.Random
 
 /**
- * Animated welcome screen: gold specks drift up, the Bistbarg fan spins into place,
+ * Animated welcome screen on white: gold specks drift up, the Bistbarg fan spins into place,
  * the "BIST BARG" letters slide in, a shine sweeps across the logo, a gold line opens
  * and the slogan rises in underneath.
  */
@@ -73,7 +73,7 @@ class IntroView(context: Context) : View(context) {
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         bgPaint.shader = RadialGradient(
             w / 2f, h * 0.42f, maxOf(w, h) * 0.75f,
-            intArrayOf(0xFF2E2717.toInt(), 0xFF15130F.toInt(), 0xFF0A0908.toInt()),
+            intArrayOf(0xFFFFFFFF.toInt(), 0xFFFFFFFF.toInt(), 0xFFF8F3E1.toInt()),
             floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP,
         )
         val width = min(w * 0.72f, dp(320f))
@@ -82,15 +82,15 @@ class IntroView(context: Context) : View(context) {
         val top = h * 0.42f - height / 2f
         logoRect.set(left, top, left + width, top + height)
 
-        val gold = intArrayOf(0xFFFFF1A6.toInt(), 0xFFE5C74A.toInt(), 0xFFB08A1E.toInt())
+        val gold = intArrayOf(0xFFCFAE34.toInt(), 0xFFA9831C.toInt(), 0xFF7A5C10.toInt())
         sloganPaint.shader = LinearGradient(0f, logoRect.bottom, 0f, logoRect.bottom + dp(80f), gold, null, Shader.TileMode.CLAMP)
         linePaint.shader = LinearGradient(
             w / 2f - dp(80f), 0f, w / 2f + dp(80f), 0f,
-            intArrayOf(0x00E5C74A, 0xFFE5C74A.toInt(), 0x00E5C74A), null, Shader.TileMode.CLAMP,
+            intArrayOf(0x00C7A93A, 0xFFC7A93A.toInt(), 0x00C7A93A), null, Shader.TileMode.CLAMP,
         )
         glowPaint.shader = RadialGradient(
             logoRect.left + fanPivotX / logoW * width, logoRect.top + fanPivotY / logoH * height, width * 0.6f,
-            intArrayOf(0x55E5C74A, 0x00E5C74A), null, Shader.TileMode.CLAMP,
+            intArrayOf(0x30E5C74A, 0x00E5C74A), null, Shader.TileMode.CLAMP,
         )
 
         sparks.clear()
@@ -164,7 +164,7 @@ class IntroView(context: Context) : View(context) {
             val x = logoRect.left - band + (logoRect.width() + 2 * band) * shineP
             shinePaint.shader = LinearGradient(
                 x - band / 2, logoRect.top, x + band / 2, logoRect.bottom,
-                intArrayOf(0x00FFFFFF, 0xCCFFFFFF.toInt(), 0x00FFFFFF), null, Shader.TileMode.CLAMP,
+                intArrayOf(0x00FFFFFF, 0xB3FFFFFF.toInt(), 0x00FFFFFF), null, Shader.TileMode.CLAMP,
             )
             canvas.drawRect(logoRect.left - band, logoRect.top - band, logoRect.right + band, logoRect.bottom + band, shinePaint)
         }
@@ -202,8 +202,8 @@ class IntroView(context: Context) : View(context) {
             if (y < 0) y += h
             val x = s.x + sin(seconds * 0.8f + s.phase) * dp(8f)
             val twinkle = 0.35f + 0.65f * ((sin(seconds * 2.2f + s.phase) + 1f) / 2f)
-            sparkPaint.color = 0xFFE5C74A.toInt()
-            sparkPaint.alpha = (200 * twinkle * fadeIn).toInt()
+            sparkPaint.color = 0xFFD2B23E.toInt()
+            sparkPaint.alpha = (150 * twinkle * fadeIn).toInt()
             canvas.drawCircle(x, y, s.r, sparkPaint)
         }
     }
