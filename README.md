@@ -1,20 +1,21 @@
 # Bistbarg Android App
 
-Native Android app (Kotlin + Jetpack Compose) for the WooCommerce shop at **https://bistbarg.com**.
+Android app for the shop at **https://bistbarg.com**. The app shows the website itself full screen, so it looks and works **exactly like the site**. Any change you make on the site (theme, products, menus, plugins) shows up in the app immediately, with no app update needed.
 
 ## Features
 
-- **Native shop.** Product grid with infinite scroll, pull-to-refresh and search.
-- **Categories.** Category chips on the home screen and a full categories tab.
-- **Product page.** Image gallery, sale prices, stock status, variation picker (size, colour, …), quantity and sharing.
-- **Native cart.** Saved on the device, with a badge on the Cart tab.
-- **Checkout.** Tapping *Checkout* moves the cart into the website cart and opens your real WooCommerce checkout inside the app. All your payment gateways, shipping methods, coupons and plugins keep working.
-- **Account.** The *My Account* page (login, orders, addresses) opens in the app.
-- **System support.** Light and dark mode, RTL layouts, splash screen and adaptive icon.
+- Opens bistbarg.com full screen and matches the status bar colour to the site.
+- Splash screen while the first page loads, and a thin loading bar.
+- Pull down to refresh.
+- Android back button goes back through pages; press it twice to exit.
+- Friendly "no internet" screen with a retry button.
+- Login, cart, checkout and every payment gateway work exactly as on the site.
+- Links to Instagram, Telegram, WhatsApp, Eitaa, Rubika and others, plus phone (`tel:`) and email links, open in their own apps.
+- File uploads (e.g. forms) and downloads work.
+- bistbarg.com links opened on the phone can open in the app.
+- The app adds `BistbargApp/<version>` to its user agent, so the site can detect the app (for example to hide a "download our app" banner).
 
-### No API keys needed
-
-The app uses the public, read-only [WooCommerce Store API](https://developer.woocommerce.com/docs/apis/store-api/) (`/wp-json/wc/store/v1/`), which is built into WooCommerce. No secrets are stored in the app or in this repository.
+> The earlier native version (product, cart and category screens built inside the app) is still in the git history if you want it back.
 
 ## Getting the APK
 
@@ -26,17 +27,10 @@ Every push to `main` builds the app with GitHub Actions and publishes it on the 
 
 ## Configuration
 
-Values live in `app/build.gradle.kts` and can be overridden with `-P` flags:
-
-| Property        | Default                | Purpose                                  |
-|-----------------|------------------------|------------------------------------------|
-| `STORE_URL`     | `https://bistbarg.com` | Your shop's address                      |
-| `CHECKOUT_PATH` | `/checkout/`           | Fallback checkout page path              |
-| `ACCOUNT_PATH`  | `/my-account/`         | My Account page path                     |
-
-The checkout URL is normally detected automatically from WooCommerce. If your account or checkout page uses a different (for example, translated) slug, change the defaults.
-
-App name: `app/src/main/res/values/strings.xml`. Colours: `ui/theme/Theme.kt` and `res/values/colors.xml`. To translate the app, add `res/values-fa/strings.xml` (or `values-ckb`, `values-ar`, …).
+- Site address: `STORE_URL` in `app/build.gradle.kts`
+- App name: `app/src/main/res/values/strings.xml`
+- Icon and splash colour: `app/src/main/res/values/colors.xml` and `res/drawable/ic_launcher_foreground.xml`
+- Apps that external links open in: `EXTERNAL_HOSTS` in `MainActivity.kt`
 
 ## Signed release and Google Play
 
@@ -64,13 +58,8 @@ Requires JDK 17 and the Android SDK (or Android Studio):
 ## Project layout
 
 ```
-app/src/main/java/com/bistbarg/app/
-├── BistbargApp.kt            # HTTP client, shared cookies, repositories
-├── MainActivity.kt           # Navigation + bottom tabs
-├── data/                     # Store API client, models, cart, price formatting
-└── ui/
-    ├── ViewModels.kt
-    ├── components/           # Product grid, WebView, shared widgets
-    ├── screens/              # Home, Categories, Product, Cart, Checkout, Account
-    └── theme/
+app/src/main/
+├── java/com/bistbarg/app/MainActivity.kt   # WebView, back button, external links, uploads
+├── res/layout/activity_main.xml            # WebView + pull-to-refresh + offline screen
+└── AndroidManifest.xml
 ```

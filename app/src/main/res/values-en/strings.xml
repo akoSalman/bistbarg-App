@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="offline_title">No internet connection</string>
+    <string name="offline_message">Please check your connection and try again.</string>
+    <string name="retry">Try again</string>
+    <string name="press_back_again">Press back again to exit</string>
+</resources>

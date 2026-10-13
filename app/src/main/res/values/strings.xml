@@ -1,41 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Bistbarg</string>
-
-    <string name="nav_home">Shop</string>
-    <string name="nav_categories">Categories</string>
-    <string name="nav_cart">Cart</string>
-    <string name="nav_account">Account</string>
-
-    <string name="search_hint">Search products</string>
-    <string name="clear">Clear</string>
-    <string name="back">Back</string>
-    <string name="share">Share</string>
-    <string name="retry">Retry</string>
-    <string name="error_generic">Something went wrong. Check your connection and try again.</string>
-    <string name="no_products">No products found</string>
-    <string name="no_categories">No categories found</string>
-    <string name="products_count">%1$d products</string>
-
-    <string name="out_of_stock">Out of stock</string>
-    <string name="in_stock">In stock</string>
-    <string name="on_sale">Sale</string>
-    <string name="add_to_cart">Add to cart</string>
-    <string name="added_to_cart">Added to cart</string>
-    <string name="view_cart">View cart</string>
-    <string name="choose_options">Choose options</string>
-    <string name="option_unavailable">This combination is not available</string>
-    <string name="view_on_website">View on website</string>
-    <string name="description">Description</string>
-    <string name="decrease">Decrease quantity</string>
-    <string name="increase">Increase quantity</string>
-    <string name="remove">Remove</string>
-
-    <string name="cart_empty">Your cart is empty</string>
-    <string name="start_shopping">Start shopping</string>
-    <string name="total">Total</string>
-    <string name="checkout">Checkout</string>
-    <string name="checkout_note">Shipping, coupons and payment are completed on the next step.</string>
-    <string name="preparing_checkout">Preparing your order…</string>
-    <string name="checkout_partial">These items could not be added and are still in your cart: %1$s</string>
+    <string name="offline_title">اتصال به اینترنت برقرار نیست</string>
+    <string name="offline_message">لطفاً اینترنت خود را بررسی کنید و دوباره تلاش کنید.</string>
+    <string name="retry">تلاش دوباره</string>
+    <string name="press_back_again">برای خروج دوباره دکمه بازگشت را بزنید</string>
 </resources>
