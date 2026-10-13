@@ -5,4 +5,5 @@
     <string name="offline_message">لطفاً اینترنت خود را بررسی کنید و دوباره تلاش کنید.</string>
     <string name="retry">تلاش دوباره</string>
     <string name="press_back_again">برای خروج دوباره دکمه بازگشت را بزنید</string>
+    <string name="intro_slogan">زیبایی، برگ به برگ</string>
 </resources>

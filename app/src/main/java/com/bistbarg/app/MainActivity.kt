@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.SystemClock
 import android.view.View
+import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
@@ -46,17 +47,18 @@ class MainActivity : ComponentActivity() {
     private var lastBackPress = 0L
     private var fileCallback: ValueCallback<Array<Uri>>? = null
 
+    private var intro: IntroView? = null
+    private var introSequenceDone = false
+    private var siteBarsLight: Boolean? = null
+
     private val filePicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         fileCallback?.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data))
         fileCallback = null
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        val splash = installSplashScreen()
+        installSplashScreen()
         super.onCreate(savedInstanceState)
-        val startedAt = SystemClock.uptimeMillis()
-        // Keep the splash until the site has painted (max 4 s) so users never see a blank page.
-        splash.setKeepOnScreenCondition { !firstPageShown && SystemClock.uptimeMillis() - startedAt < 4000 }
 
         WindowCompat.setDecorFitsSystemWindows(window, false)
         setContentView(R.layout.activity_main)
@@ -92,6 +94,9 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        // The animated intro plays on a fresh start while the site loads behind it.
+        if (savedInstanceState == null) showIntro()
+
         if (savedInstanceState == null || webView.restoreState(savedInstanceState) == null) {
             webView.loadUrl(siteUrlFrom(intent) ?: BuildConfig.STORE_URL)
         }
@@ -126,7 +131,7 @@ class MainActivity : ComponentActivity() {
                 progress.progress = newProgress
                 progress.visibility = if (newProgress < 100) View.VISIBLE else View.GONE
                 // Reveal the page as soon as most of it has rendered.
-                if (newProgress >= 70) firstPageShown = true
+                if (newProgress >= 70) onFirstPageShown()
             }
 
             override fun onShowFileChooser(
@@ -168,7 +173,7 @@ class MainActivity : ComponentActivity() {
             }
 
             override fun onPageFinished(view: WebView, url: String) {
-                firstPageShown = true
+                onFirstPageShown()
                 swipe.isRefreshing = false
                 if (!mainFrameFailed) errorView.visibility = View.GONE
                 applySiteColors()
@@ -177,7 +182,7 @@ class MainActivity : ComponentActivity() {
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
                 if (request.isForMainFrame) {
                     mainFrameFailed = true
-                    firstPageShown = true
+                    onFirstPageShown()
                     swipe.isRefreshing = false
                     errorView.visibility = View.VISIBLE
                 }
@@ -206,11 +211,54 @@ class MainActivity : ComponentActivity() {
             val color = parseCssColor(result?.trim('"').orEmpty()) ?: return@evaluateJavascript
             root.setBackgroundColor(color)
             val light = ColorUtils.calculateLuminance(color) > 0.5
-            WindowInsetsControllerCompat(window, root).apply {
-                isAppearanceLightStatusBars = light
-                isAppearanceLightNavigationBars = light
-            }
+            siteBarsLight = light
+            if (intro == null) setBarsLight(light)
         }
+    }
+
+    private fun setBarsLight(light: Boolean) {
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            isAppearanceLightStatusBars = light
+            isAppearanceLightNavigationBars = light
+        }
+    }
+
+    private fun showIntro() {
+        val view = IntroView(this)
+        view.onSequenceFinished = {
+            introSequenceDone = true
+            maybeDismissIntro()
+        }
+        (window.decorView as ViewGroup).addView(
+            view,
+            ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
+        )
+        intro = view
+        setBarsLight(false)
+        // Never keep people waiting on a slow connection.
+        view.postDelayed({ dismissIntro() }, 9000)
+    }
+
+    private fun onFirstPageShown() {
+        firstPageShown = true
+        maybeDismissIntro()
+    }
+
+    private fun maybeDismissIntro() {
+        if (introSequenceDone && firstPageShown) dismissIntro()
+    }
+
+    private fun dismissIntro() {
+        val view = intro ?: return
+        intro = null
+        setBarsLight(siteBarsLight ?: true)
+        view.animate()
+            .alpha(0f)
+            .scaleX(1.08f)
+            .scaleY(1.08f)
+            .setDuration(550)
+            .withEndAction { (view.parent as? ViewGroup)?.removeView(view) }
+            .start()
     }
 
     private fun parseCssColor(value: String): Int? {
