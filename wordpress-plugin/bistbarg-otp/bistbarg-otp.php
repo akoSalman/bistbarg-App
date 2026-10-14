@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       ورود و ثبت‌نام با موبایل بیست‌برگ (کاوه‌نگار)
  * Description:       ثبت‌نام و ورود مشتریان با شمارهٔ موبایل و کد پیامکی، سپس تکمیل نام و استان و شهر. فرم پیش‌فرض ووکامرس غیرفعال می‌شود. دارای API برای اپلیکیشن.
- * Version:           2.1.0
+ * Version:           2.2.0
  * Author:            Bistbarg
  * Requires at least: 5.8
  * Requires PHP:      7.4
@@ -11,7 +11,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'BBOTP_VERSION', '2.1.0' );
+define( 'BBOTP_VERSION', '2.2.0' );
 define( 'BBOTP_DIR', plugin_dir_path( __FILE__ ) );
 
 require_once BBOTP_DIR . 'iran-locations.php';
@@ -45,6 +45,37 @@ function bbotp_ensure_login_page() {
 		update_option( 'bbotp_login_page_id', (int) $pid );
 	}
 }
+
+// در صفحهٔ ورود، اجزای قالب (سربرگ، فوتر، مسیر راهنما، نوار کناری) پنهان می‌شوند تا فقط فرم دیده شود.
+add_filter( 'body_class', function ( $classes ) {
+	$pid = (int) get_option( 'bbotp_login_page_id' );
+	if ( $pid && is_page( $pid ) ) {
+		$classes[] = 'bbotp-login-page';
+	}
+	return $classes;
+} );
+
+add_action( 'wp_head', function () {
+	$pid = (int) get_option( 'bbotp_login_page_id' );
+	if ( ! $pid || ! is_page( $pid ) ) {
+		return;
+	}
+	echo '<style>
+	body.bbotp-login-page{background:#f4efe3 !important}
+	body.bbotp-login-page .whb-header, body.bbotp-login-page header.site-header, body.bbotp-login-page .site-header,
+	body.bbotp-login-page .wd-header-banner, body.bbotp-login-page .main-page-title-wrapper, body.bbotp-login-page .page-title,
+	body.bbotp-login-page .wd-page-title, body.bbotp-login-page .woocommerce-breadcrumb, body.bbotp-login-page .wd-breadcrumbs,
+	body.bbotp-login-page .breadcrumbs, body.bbotp-login-page #main-page-title, body.bbotp-login-page .wd-footer-wrapper,
+	body.bbotp-login-page footer, body.bbotp-login-page .site-footer, body.bbotp-login-page .footer-container,
+	body.bbotp-login-page .widget-area, body.bbotp-login-page .sidebar, body.bbotp-login-page aside,
+	body.bbotp-login-page .wd-tools-cart, body.bbotp-login-page .mobile-header, body.bbotp-login-page .wd-prefooter,
+	body.bbotp-login-page .scrollToTop, body.bbotp-login-page .wd-sticky-nav, body.bbotp-login-page .whb-general-header{display:none !important}
+	body.bbotp-login-page .content-area, body.bbotp-login-page #main, body.bbotp-login-page .site-content,
+	body.bbotp-login-page .container, body.bbotp-login-page .row{width:100% !important;max-width:100% !important;margin:0 !important;float:none !important;padding-top:0 !important}
+	body.bbotp-login-page .site-content, body.bbotp-login-page #main{display:flex;align-items:flex-start;justify-content:center;min-height:100vh;padding:28px 16px !important;box-sizing:border-box}
+	body.bbotp-login-page .bbotp-box{margin-top:4vh}
+	</style>';
+}, 99 );
 
 function bbotp_login_page_url() {
 	$pid = (int) get_option( 'bbotp_login_page_id' );
@@ -404,6 +435,9 @@ function bbotp_shortcode( $atts = array() ) {
 	ob_start();
 	?>
 	<div class="bbotp-box" dir="rtl" data-rest="<?php echo esc_attr( $rest ); ?>" data-redirect="<?php echo esc_url( $redirect ); ?>" data-profile="<?php echo esc_attr( $start_profile ); ?>">
+		<?php if ( function_exists( 'get_custom_logo' ) && has_custom_logo() ) : ?>
+			<div class="bbotp-logo"><?php echo get_custom_logo(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></div>
+		<?php endif; ?>
 		<!-- مرحلهٔ ۱: شماره -->
 		<div class="bbotp-step" data-step="phone">
 			<h3 class="bbotp-h">ورود | ثبت‌نام</h3>
@@ -437,20 +471,24 @@ function bbotp_shortcode( $atts = array() ) {
 		<p class="bbotp-msg" role="alert"></p>
 	</div>
 	<style>
-		.bbotp-box{max-width:380px;margin:0 auto;font-family:inherit;text-align:right}
-		.bbotp-h{margin:0 0 14px;font-size:20px;color:#1f1a10;text-align:center}
-		.bbotp-label{display:block;margin:12px 0 6px;font-weight:600;color:#1f1a10;font-size:14px}
-		.bbotp-input{width:100%;box-sizing:border-box;padding:12px 14px;border:1px solid #d8d2bf;border-radius:12px;font-size:16px;background:#fff;font-family:inherit}
-		select.bbotp-input{height:46px}
-		.bbotp-code{letter-spacing:.4em;text-align:center;font-size:20px}
-		.bbotp-row{display:flex;gap:10px}
-		.bbotp-row>div{flex:1}
-		.bbotp-btn{display:block;width:100%;margin-top:18px;padding:13px;border:0;border-radius:12px;background:#a9831c;color:#fff;font-size:16px;font-weight:700;cursor:pointer;text-align:center;text-decoration:none}
-		.bbotp-btn:disabled{opacity:.6;cursor:default}
-		.bbotp-resend{width:100%;margin-top:8px;background:none;border:0;color:#a9831c;cursor:pointer;font-size:14px}
-		.bbotp-resend:disabled{color:#9a9384;cursor:default}
-		.bbotp-sent{font-size:13px;color:#6b6352}.bbotp-sent a{color:#a9831c}
-		.bbotp-msg{margin-top:12px;color:#b3261e;font-size:14px;min-height:20px;text-align:center}
+		.bbotp-box{max-width:380px;margin:0 auto;font-family:inherit;text-align:right;background:#fff;border-radius:22px;padding:28px 24px 26px;box-shadow:0 18px 50px rgba(31,26,16,.12);border:1px solid #f0ead6}
+		.bbotp-logo{text-align:center;margin-bottom:6px}
+		.bbotp-logo img{max-height:70px;width:auto;display:inline-block}
+		.bbotp-h{margin:4px 0 18px;font-size:21px;font-weight:800;color:#1f1a10;text-align:center}
+		.bbotp-label{display:block;margin:12px 0 7px;font-weight:700;color:#3a3326;font-size:14px}
+		.bbotp-input{width:100%;box-sizing:border-box;padding:13px 15px;border:1.5px solid #e3dcc6;border-radius:14px;font-size:16px;background:#fcfbf6;transition:border-color .15s,box-shadow .15s;font-family:inherit}
+		.bbotp-input:focus{outline:0;border-color:#a9831c;box-shadow:0 0 0 3px rgba(169,131,28,.15);background:#fff}
+		select.bbotp-input{height:48px}
+		.bbotp-code{letter-spacing:.5em;text-align:center;font-size:22px;font-weight:700}
+		.bbotp-row{display:flex;gap:10px}.bbotp-row>div{flex:1}
+		.bbotp-btn{display:block;width:100%;margin-top:20px;padding:14px;border:0;border-radius:14px;background:linear-gradient(135deg,#c7a742,#a9831c);color:#fff;font-size:16px;font-weight:800;cursor:pointer;text-align:center;text-decoration:none;box-shadow:0 8px 20px rgba(169,131,28,.28);transition:transform .08s,box-shadow .15s}
+		.bbotp-btn:hover{box-shadow:0 10px 26px rgba(169,131,28,.38)}
+		.bbotp-btn:active{transform:translateY(1px)}
+		.bbotp-btn:disabled{opacity:.6;cursor:default;box-shadow:none}
+		.bbotp-resend{width:100%;margin-top:10px;background:none;border:0;color:#a9831c;cursor:pointer;font-size:14px;font-weight:600}
+		.bbotp-resend:disabled{color:#b3ad9c;cursor:default}
+		.bbotp-sent{font-size:13px;color:#6b6352;text-align:center;line-height:1.9}.bbotp-sent a{color:#a9831c;font-weight:700}
+		.bbotp-msg{margin-top:14px;color:#b3261e;font-size:14px;min-height:20px;text-align:center;line-height:1.7}
 		.bbotp-msg.ok{color:#1e7e34}
 	</style>
 	<script>
