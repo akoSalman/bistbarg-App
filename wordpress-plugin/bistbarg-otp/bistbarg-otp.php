@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       ورود و ثبت‌نام با موبایل بیست‌برگ (کاوه‌نگار)
  * Description:       ثبت‌نام و ورود مشتریان با شمارهٔ موبایل و کد پیامکی، سپس تکمیل نام و استان و شهر. فرم پیش‌فرض ووکامرس غیرفعال می‌شود. دارای API برای اپلیکیشن.
- * Version:           2.0.0
+ * Version:           2.1.0
  * Author:            Bistbarg
  * Requires at least: 5.8
  * Requires PHP:      7.4
@@ -11,10 +11,68 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'BBOTP_VERSION', '2.0.0' );
+define( 'BBOTP_VERSION', '2.1.0' );
 define( 'BBOTP_DIR', plugin_dir_path( __FILE__ ) );
 
 require_once BBOTP_DIR . 'iran-locations.php';
+
+/* -------------------------------------------------------------------------
+ *  صفحهٔ ورود اختصاصی و هدایت به آن
+ * ---------------------------------------------------------------------- */
+
+register_activation_hook( __FILE__, 'bbotp_ensure_login_page' );
+add_action( 'admin_init', 'bbotp_ensure_login_page' );
+
+/** یک صفحه با کد کوتاه فرم می‌سازد (یک بار) و شناسه‌اش را ذخیره می‌کند. */
+function bbotp_ensure_login_page() {
+	$pid = (int) get_option( 'bbotp_login_page_id' );
+	if ( $pid && get_post( $pid ) && 'trash' !== get_post_status( $pid ) ) {
+		return;
+	}
+	$existing = get_page_by_path( 'bistbarg-login' );
+	if ( $existing ) {
+		update_option( 'bbotp_login_page_id', $existing->ID );
+		return;
+	}
+	$pid = wp_insert_post( array(
+		'post_title'   => 'ورود | ثبت‌نام',
+		'post_name'    => 'bistbarg-login',
+		'post_content' => '[bistbarg_otp_login]',
+		'post_status'  => 'publish',
+		'post_type'    => 'page',
+	) );
+	if ( $pid && ! is_wp_error( $pid ) ) {
+		update_option( 'bbotp_login_page_id', (int) $pid );
+	}
+}
+
+function bbotp_login_page_url() {
+	$pid = (int) get_option( 'bbotp_login_page_id' );
+	return $pid ? get_permalink( $pid ) : home_url( '/bistbarg-login/' );
+}
+
+// کاربر خارج‌شده که به صفحهٔ حساب می‌رود، به صفحهٔ ورود ما هدایت می‌شود.
+add_action( 'template_redirect', function () {
+	$s = bbotp_settings();
+	if ( empty( $s['replace_wc'] ) || is_user_logged_in() ) {
+		return;
+	}
+	if ( ! function_exists( 'is_account_page' ) || ! is_account_page() ) {
+		return;
+	}
+	$pid = (int) get_option( 'bbotp_login_page_id' );
+	if ( $pid && ! is_page( $pid ) ) {
+		wp_safe_redirect( get_permalink( $pid ) );
+		exit;
+	}
+} );
+
+// فرم ثبت‌نام پیش‌فرض ووکامرس (ایمیل) را از همه‌جا بردار تا فقط فرم موبایلی بماند.
+add_filter( 'pre_option_woocommerce_enable_myaccount_registration', function ( $v ) {
+	$s = bbotp_settings();
+	return empty( $s['replace_wc'] ) ? $v : 'no';
+} );
+
 
 /* -------------------------------------------------------------------------
  *  تنظیمات
