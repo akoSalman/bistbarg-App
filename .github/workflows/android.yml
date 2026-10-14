@@ -61,6 +61,7 @@ jobs:
         run: |
           mkdir -p dist
           cp app/build/outputs/apk/debug/app-debug.apk dist/bistbarg.apk
+          (cd wordpress-plugin && zip -qr ../dist/bistbarg-push.zip bistbarg-push)
           if [ -f app/build/outputs/apk/release/app-release.apk ]; then cp app/build/outputs/apk/release/app-release.apk dist/bistbarg-release.apk; fi
           if [ -f app/build/outputs/bundle/release/app-release.aab ]; then cp app/build/outputs/bundle/release/app-release.aab dist/bistbarg-release.aab; fi
 
@@ -77,6 +78,9 @@ jobs:
           body: |
             Download **bistbarg.apk** below and open it on your Android phone
             (allow "Install unknown apps" if asked).
+
+            **bistbarg-push.zip** is the WordPress plugin for sending notifications to the app
+            (WordPress admin → Plugins → Add New → Upload Plugin).
 
             Commit: ${{ github.sha }}
           files: dist/*

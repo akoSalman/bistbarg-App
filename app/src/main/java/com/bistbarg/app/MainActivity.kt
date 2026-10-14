@@ -1,11 +1,14 @@
 package com.bistbarg.app
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import android.view.View
@@ -29,6 +32,13 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 
 /**
@@ -57,7 +67,11 @@ class MainActivity : ComponentActivity() {
             ACTION_REGISTERED -> webView.loadUrl(BuildConfig.STORE_URL)
             ACTION_LOGIN -> webView.loadUrl(BuildConfig.STORE_URL.trimEnd('/') + BuildConfig.ACCOUNT_PATH)
         }
+        askNotificationPermissionOnce()
     }
+
+    private val notificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     private val filePicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         fileCallback?.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data))
@@ -108,6 +122,17 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState == null || webView.restoreState(savedInstanceState) == null) {
             webView.loadUrl(siteUrlFrom(intent) ?: BuildConfig.STORE_URL)
         }
+
+        // Notifications: every ~15 min in the background, every 30 s while the app is open.
+        Notifications.schedule(this)
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (true) {
+                    withContext(Dispatchers.IO) { Notifications.sync(applicationContext) }
+                    delay(30_000)
+                }
+            }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -115,8 +140,33 @@ class MainActivity : ComponentActivity() {
         siteUrlFrom(intent)?.let { webView.loadUrl(it) }
     }
 
-    private fun siteUrlFrom(intent: Intent?): String? =
-        intent?.data?.takeIf { it.scheme == "https" && isOwnHost(it.host) }?.toString()
+    /** A bistbarg.com link, or the page a tapped notification points to. */
+    private fun siteUrlFrom(intent: Intent?): String? {
+        if (intent == null) return null
+        if (intent.hasExtra(Notifications.EXTRA_URL)) {
+            val link = intent.getStringExtra(Notifications.EXTRA_URL).orEmpty()
+            intent.removeExtra(Notifications.EXTRA_URL)
+            return when {
+                link.isBlank() -> BuildConfig.STORE_URL
+                Notifications.isSiteUrl(link) -> link
+                else -> {
+                    openExternally(Uri.parse(link))
+                    null
+                }
+            }
+        }
+        return intent.data?.takeIf { it.scheme == "https" && isOwnHost(it.host) }?.toString()
+    }
+
+    /** Android 13+ needs the user's OK before showing notifications. Asked once. */
+    private fun askNotificationPermissionOnce() {
+        if (Build.VERSION.SDK_INT < 33) return
+        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
+        val prefs = getSharedPreferences("app", MODE_PRIVATE)
+        if (prefs.getBoolean(KEY_NOTIFICATION_ASKED, false)) return
+        prefs.edit().putBoolean(KEY_NOTIFICATION_ASKED, true).apply()
+        notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun setupWebView() {
@@ -265,6 +315,7 @@ class MainActivity : ComponentActivity() {
             view.postDelayed({ (view.parent as? ViewGroup)?.removeView(view) }, 700)
             return
         }
+        askNotificationPermissionOnce()
         view.animate()
             .alpha(0f)
             .scaleX(1.08f)
@@ -350,6 +401,7 @@ class MainActivity : ComponentActivity() {
         const val ACTION_REGISTERED = "registered"
         const val ACTION_LOGIN = "login"
         private const val KEY_WELCOME_SHOWN = "welcome_shown"
+        private const val KEY_NOTIFICATION_ASKED = "notification_asked"
 
         private val EXTERNAL_HOSTS = listOf(
             "instagram.com", "t.me", "telegram.me", "wa.me", "whatsapp.com", "api.whatsapp.com",

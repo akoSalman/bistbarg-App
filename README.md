@@ -25,6 +25,18 @@ Open that link on your Android phone, then open the downloaded file. You may nee
 
 Every push to `main` builds the app with GitHub Actions and publishes it on the [Releases page](https://github.com/akoSalman/bistbarg-App/releases). Pushing a tag such as `v1.0.0` creates a release with that version name.
 
+## Push notifications (WordPress plugin)
+
+`wordpress-plugin/bistbarg-push/` is a WordPress plugin with an admin panel ("اعلان‌های اپ") for sending notifications to app users:
+
+- Send to all app users, logged-in customers only, or one customer, with an optional image and link. The panel shows a live phone preview.
+- Automatic notifications to the customer when their order status changes. Templates can be edited per status.
+- History with delivery counts, and stats for active devices.
+
+Every build attaches `bistbarg-push.zip` to the [latest release](https://github.com/akoSalman/bistbarg-App/releases/latest). Install it from **Plugins → Add New → Upload Plugin**.
+
+How delivery works: the app checks `wp-admin/admin-ajax.php?action=bistbarg_notifications` every 30 s while it is open. While it is closed, Android checks about every 15 minutes (WorkManager). No Firebase, no socket server and no extra hosting are needed. The site's login cookies identify the customer for personal notifications.
+
 ## Configuration
 
 - Site address: `STORE_URL` in `app/build.gradle.kts`

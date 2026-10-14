@@ -34,4 +34,6 @@
     <string name="field_phone">شماره موبایل</string>
     <string name="field_first_name">نام</string>
     <string name="field_last_name">نام خانوادگی</string>
+    <string name="notification_channel">اطلاعیه‌های بیست‌برگ</string>
+    <string name="notification_channel_description">تخفیف‌ها، پیشنهادهای ویژه و وضعیت سفارش‌ها</string>
 </resources>
