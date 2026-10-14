@@ -73,7 +73,11 @@ jobs:
           mkdir -p dist
           cp app/build/outputs/apk/debug/app-debug.apk dist/bistbarg.apk
           (cd wordpress-plugin && zip -qr ../dist/bistbarg-push.zip bistbarg-push)
-          (cd socket-server && zip -q ../dist/bistbarg-socket.zip server.js package.json package-lock.json bistbarg-socket.service nginx.conf.example apache.conf.example README.md)
+          # Ship the socket server with its one dependency (ws) so the server needs no npm access.
+          (cd socket-server && rm -rf node_modules && npm ci --omit=dev --no-audit --no-fund >/dev/null \
+            && zip -qr ../dist/bistbarg-socket.zip server.js package.json package-lock.json node_modules \
+               install.sh bistbarg-socket.service nginx.conf.example apache.conf.example README.md)
+          cp socket-server/install.sh dist/install-socket.sh
           if [ -f app/build/outputs/apk/release/app-release.apk ]; then cp app/build/outputs/apk/release/app-release.apk dist/bistbarg-release.apk; fi
           if [ -f app/build/outputs/bundle/release/app-release.aab ]; then cp app/build/outputs/bundle/release/app-release.aab dist/bistbarg-release.aab; fi
 
@@ -94,8 +98,9 @@ jobs:
             **bistbarg-push.zip** is the WordPress plugin for sending notifications to the app
             (WordPress admin → Plugins → Add New → Upload Plugin).
 
-            **bistbarg-socket.zip** is the real-time socket server to run on the site's server
-            (see README.md inside).
+            **bistbarg-socket.zip** is the real-time socket server to run on the site's server.
+            Install it on the server (as root) with:
+            `curl -fsSL https://github.com/akoSalman/bistbarg-App/releases/latest/download/install-socket.sh | bash`
 
             Commit: ${{ github.sha }}
           files: dist/*

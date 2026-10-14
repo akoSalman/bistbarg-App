@@ -1,8 +1,8 @@
 # systemd service for the Bistbarg socket server.
-# Install:
-#   sudo cp bistbarg-socket.service /etc/systemd/system/
-#   sudo nano /etc/systemd/system/bistbarg-socket.service   # set BISTBARG_SECRET and paths
-#   sudo systemctl daemon-reload && sudo systemctl enable --now bistbarg-socket
+# install.sh writes this automatically. For a manual setup:
+#   echo "BISTBARG_SECRET=<secret from WordPress>" > /etc/bistbarg-socket.env && chmod 600 /etc/bistbarg-socket.env
+#   useradd --system --no-create-home --shell /usr/sbin/nologin bistbarg
+#   cp bistbarg-socket.service /etc/systemd/system/ && systemctl daemon-reload && systemctl enable --now bistbarg-socket
 [Unit]
 Description=Bistbarg app notification socket server
 After=network.target
@@ -10,14 +10,13 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=/opt/bistbarg-socket
-ExecStart=/usr/bin/node /opt/bistbarg-socket/server.js
-Environment=BISTBARG_SECRET=PASTE_THE_SECRET_FROM_WORDPRESS_HERE
-Environment=PORT=8090
-Environment=HOST=127.0.0.1
+ExecStart=/usr/local/bin/node /opt/bistbarg-socket/server.js
+EnvironmentFile=/etc/bistbarg-socket.env
 Restart=always
 RestartSec=3
-User=www-data
+User=bistbarg
 NoNewPrivileges=true
+LimitNOFILE=65535
 
 [Install]
 WantedBy=multi-user.target

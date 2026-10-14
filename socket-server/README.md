@@ -8,39 +8,34 @@
 گوشی محتوای اعلان را با حساب کاربری خودش از وردپرس می‌گیرد ◀────────────┘
 ```
 
-## نصب (سرور لینوکس، با دسترسی root)
+## نصب خودکار (پیشنهادی)
 
-۱. **Node.js** نسخهٔ ۱۸ یا بالاتر را نصب کنید (اگر نصب نیست):
+۱. **رمز سوکت** را از وردپرس کپی کنید:
+پیشخوان ← اعلان‌های اپ ← اعلان‌های خودکار سفارش ← بخش «سرور سوکت» ← «رمز سوکت».
+
+۲. با کاربر root وارد سرور شوید و این دستور را اجرا کنید:
 ```bash
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt install -y nodejs
+curl -fsSL https://github.com/akoSalman/bistbarg-App/releases/latest/download/install-socket.sh | bash
 ```
+اسکریپت این کارها را انجام می‌دهد:
+- نصب Node.js. اگر nodejs.org در دسترس نباشد، از میرورهای جایگزین استفاده می‌کند.
+- نصب سرور در `/opt/bistbarg-socket`.
+- گرفتن رمز سوکت.
+- ساخت سرویس `bistbarg-socket` که خودکار روشن می‌شود.
+- بررسی سلامت سرویس.
+- نمایش تنظیم آمادهٔ nginx.
 
-۲. فایل‌ها را در سرور کپی کنید و وابستگی را نصب کنید:
-```bash
-sudo mkdir -p /opt/bistbarg-socket
-sudo cp server.js package.json package-lock.json /opt/bistbarg-socket/
-cd /opt/bistbarg-socket && sudo npm ci --omit=dev
-```
+اگر سرور به گیت‌هاب دسترسی ندارد، این کارها را انجام دهید:
+1. فایل‌های `install-socket.sh` و `bistbarg-socket.zip` را از صفحهٔ Releases دانلود کنید.
+2. هر دو را در یک پوشه روی سرور بگذارید.
+3. در همان پوشه این دستور را اجرا کنید: `bash install-socket.sh`
 
-۳. **رمز سوکت** را از وردپرس بردارید:
-پیشخوان ← اعلان‌های اپ ← تنظیمات ← بخش «سرور سوکت» ← «رمز سوکت».
-
-۴. سرویس را نصب کنید. در فایل سرویس، `BISTBARG_SECRET` را برابر رمز مرحلهٔ ۳ بگذارید:
-```bash
-sudo cp bistbarg-socket.service /etc/systemd/system/
-sudo nano /etc/systemd/system/bistbarg-socket.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now bistbarg-socket
-sudo systemctl status bistbarg-socket      # باید active (running) باشد
-```
-
-۵. وب‌سرور را تنظیم کنید تا آدرس `wss://bistbarg.com/bistbarg-socket/` به سرور سوکت برسد:
-- **nginx**: محتوای `nginx.conf.example` را داخل بلوک `server` سایت (همان که `listen 443` دارد) بگذارید. بعد `sudo nginx -t && sudo systemctl reload nginx` را اجرا کنید.
+۳. وب‌سرور را تنظیم کنید تا آدرس `wss://bistbarg.com/bistbarg-socket/` به سرور سوکت برسد. اسکریپت در پایان، متن آماده را نشان می‌دهد:
+- **nginx**: محتوای `nginx.conf.example` را داخل بلوک `server` سایت (همان که `listen 443` دارد) بگذارید. بعد `nginx -t && systemctl reload nginx` را اجرا کنید.
 - **Apache**: از `apache.conf.example` استفاده کنید.
 - **کنترل‌پنل‌ها (DirectAdmin / cPanel / aaPanel / CyberPanel)**: همین تنظیم را در بخش «Custom nginx/Apache config» یا «Reverse proxy» سایت وارد کنید.
 
-۶. در وردپرس به «اعلان‌های اپ ← تنظیمات» بروید و «سرور سوکت» را روشن کنید. وضعیت باید «متصل» نشان داده شود.
+۴. در وردپرس به «اعلان‌های اپ ← تنظیمات» بروید و «سرور سوکت» را روشن کنید. وضعیت باید «● متصل است» نشان داده شود.
 
 ## دستورهای مفید
 ```bash
