@@ -1,8 +1,8 @@
 <?php
 /**
- * Plugin Name:       ورود با موبایل بیست‌برگ (کاوه‌نگار)
- * Description:       ثبت‌نام و ورود مشتریان با شمارهٔ موبایل و کد پیامکی (OTP) از طریق کاوه‌نگار. شامل فرم آماده و API برای اپلیکیشن.
- * Version:           1.0.0
+ * Plugin Name:       ورود و ثبت‌نام با موبایل بیست‌برگ (کاوه‌نگار)
+ * Description:       ثبت‌نام و ورود مشتریان با شمارهٔ موبایل و کد پیامکی، سپس تکمیل نام و استان و شهر. فرم پیش‌فرض ووکامرس غیرفعال می‌شود. دارای API برای اپلیکیشن.
+ * Version:           2.0.0
  * Author:            Bistbarg
  * Requires at least: 5.8
  * Requires PHP:      7.4
@@ -11,7 +11,10 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'BBOTP_VERSION', '1.0.0' );
+define( 'BBOTP_VERSION', '2.0.0' );
+define( 'BBOTP_DIR', plugin_dir_path( __FILE__ ) );
+
+require_once BBOTP_DIR . 'iran-locations.php';
 
 /* -------------------------------------------------------------------------
  *  تنظیمات
@@ -19,21 +22,21 @@ define( 'BBOTP_VERSION', '1.0.0' );
 
 function bbotp_defaults() {
 	return array(
-		'api_key'        => '',
-		'template'       => 'verify',
-		'code_length'    => 5,
-		'code_ttl'       => 120, // ثانیه؛ مدت اعتبار کد
-		'resend_cooldown'=> 60,  // ثانیه؛ فاصلهٔ ارسال دوباره
-		'max_verify'     => 5,   // حداکثر تلاش برای وارد کردن کد
-		'ip_hourly_limit'=> 15,  // حداکثر درخواست کد از یک IP در ساعت
-		'default_role'   => 'customer',
+		'api_key'         => '',
+		'template'        => 'verify',
+		'code_length'     => 5,
+		'code_ttl'        => 120,
+		'resend_cooldown' => 60,
+		'max_verify'      => 5,
+		'ip_hourly_limit' => 15,
+		'default_role'    => 'customer',
+		'replace_wc'      => 1, // غیرفعال کردن فرم پیش‌فرض ووکامرس
 	);
 }
 
 function bbotp_settings() {
 	$saved = get_option( 'bbotp_settings', array() );
 	$s     = wp_parse_args( is_array( $saved ) ? $saved : array(), bbotp_defaults() );
-	// اگر کلید اینجا تنظیم نشده، از افزونهٔ پیامک فعلی استفاده کن.
 	if ( '' === $s['api_key'] ) {
 		$s['api_key'] = (string) get_option( 'kavenegar_api_key_custom', '' );
 	}
@@ -41,28 +44,27 @@ function bbotp_settings() {
 }
 
 /* -------------------------------------------------------------------------
- *  ابزارهای کمکی
+ *  ابزارها
  * ---------------------------------------------------------------------- */
 
-/** تبدیل ارقام فارسی/عربی به انگلیسی و نرمال‌سازی شماره به شکل 09xxxxxxxxx */
-function bbotp_normalize_phone( $raw ) {
+function bbotp_fa_to_en( $str ) {
 	$fa = array( '۰','۱','۲','۳','۴','۵','۶','۷','۸','۹' );
 	$ar = array( '٠','١','٢','٣','٤','٥','٦','٧','٨','٩' );
 	$en = array( '0','1','2','3','4','5','6','7','8','9' );
-	$p  = str_replace( $fa, $en, (string) $raw );
-	$p  = str_replace( $ar, $en, $p );
-	$p  = preg_replace( '/[^0-9+]/', '', $p );
+	return str_replace( $ar, $en, str_replace( $fa, $en, (string) $str ) );
+}
 
+function bbotp_normalize_phone( $raw ) {
+	$p = preg_replace( '/[^0-9+]/', '', bbotp_fa_to_en( $raw ) );
 	if ( 0 === strpos( $p, '+98' ) ) {
 		$p = '0' . substr( $p, 3 );
 	} elseif ( 0 === strpos( $p, '0098' ) ) {
 		$p = '0' . substr( $p, 4 );
-	} elseif ( 0 === strpos( $p, '98' ) && strlen( $p ) === 12 ) {
+	} elseif ( 0 === strpos( $p, '98' ) && 12 === strlen( $p ) ) {
 		$p = '0' . substr( $p, 2 );
-	} elseif ( 0 === strpos( $p, '9' ) && strlen( $p ) === 10 ) {
+	} elseif ( 0 === strpos( $p, '9' ) && 10 === strlen( $p ) ) {
 		$p = '0' . $p;
 	}
-
 	return preg_match( '/^09[0-9]{9}$/', $p ) ? $p : '';
 }
 
@@ -75,15 +77,21 @@ function bbotp_hash_code( $phone, $code ) {
 }
 
 function bbotp_client_ip() {
-	$ip = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '0';
-	return $ip;
+	return isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '0';
+}
+
+/** آیا کاربر هنوز باید نام و استان و شهرش را تکمیل کند؟ */
+function bbotp_needs_profile( $user_id ) {
+	$first = get_user_meta( $user_id, 'first_name', true );
+	$last  = get_user_meta( $user_id, 'last_name', true );
+	$city  = get_user_meta( $user_id, 'billing_city', true );
+	return ( '' === trim( (string) $first ) || '' === trim( (string) $last ) || '' === trim( (string) $city ) );
 }
 
 /* -------------------------------------------------------------------------
- *  ارسال کد از طریق کاوه‌نگار (VerifyLookup)
+ *  کاوه‌نگار
  * ---------------------------------------------------------------------- */
 
-/** @return true|WP_Error */
 function bbotp_send_code( $phone, $code ) {
 	$s = bbotp_settings();
 	if ( '' === $s['api_key'] ) {
@@ -100,13 +108,12 @@ function bbotp_send_code( $phone, $code ) {
 	if ( is_wp_error( $res ) ) {
 		return new WP_Error( 'net', 'خطا در ارتباط با کاوه‌نگار: ' . $res->get_error_message() );
 	}
-	$code_http = wp_remote_retrieve_response_code( $res );
-	$body      = json_decode( wp_remote_retrieve_body( $res ), true );
-	$status    = isset( $body['return']['status'] ) ? (int) $body['return']['status'] : 0;
-	if ( 200 === $code_http && 200 === $status ) {
+	$body   = json_decode( wp_remote_retrieve_body( $res ), true );
+	$status = isset( $body['return']['status'] ) ? (int) $body['return']['status'] : 0;
+	if ( 200 === (int) wp_remote_retrieve_response_code( $res ) && 200 === $status ) {
 		return true;
 	}
-	$msg = isset( $body['return']['message'] ) ? $body['return']['message'] : 'کد خطا ' . $code_http;
+	$msg = isset( $body['return']['message'] ) ? $body['return']['message'] : 'خطای نامشخص';
 	return new WP_Error( 'sms', 'ارسال پیامک ناموفق بود: ' . $msg );
 }
 
@@ -114,43 +121,31 @@ function bbotp_send_code( $phone, $code ) {
  *  مرحلهٔ ۱: درخواست کد
  * ---------------------------------------------------------------------- */
 
-/** @return array|WP_Error  آرایهٔ {resend_in} یا خطا */
 function bbotp_request_code( $raw_phone ) {
 	$s     = bbotp_settings();
 	$phone = bbotp_normalize_phone( $raw_phone );
 	if ( '' === $phone ) {
 		return new WP_Error( 'phone', 'شمارهٔ موبایل معتبر نیست.' );
 	}
-
-	// محدودیت بر اساس IP (جلوگیری از سوءاستفاده و خالی شدن اعتبار پیامک)
 	$ip_key = bbotp_key( 'ip', bbotp_client_ip() );
 	$ip_cnt = (int) get_transient( $ip_key );
 	if ( $ip_cnt >= (int) $s['ip_hourly_limit'] ) {
-		return new WP_Error( 'rate', 'تعداد درخواست‌ها زیاد است. لطفاً بعداً دوباره تلاش کنید.' );
+		return new WP_Error( 'rate', 'تعداد درخواست‌ها زیاد است. کمی بعد دوباره تلاش کنید.' );
 	}
-
-	// فاصلهٔ ارسال دوباره برای همین شماره
-	$cd_key = bbotp_key( 'cd', $phone );
-	if ( get_transient( $cd_key ) ) {
+	if ( get_transient( bbotp_key( 'cd', $phone ) ) ) {
 		return new WP_Error( 'cooldown', 'کد قبلی هنوز معتبر است. کمی صبر کنید.' );
 	}
 
 	$len  = max( 4, min( 8, (int) $s['code_length'] ) );
-	$min  = (int) str_pad( '1', $len, '0' );          // 10000
-	$max  = (int) str_pad( '', $len, '9' );           // 99999
-	$code = (string) random_int( $min, $max );
+	$code = (string) random_int( (int) ( '1' . str_repeat( '0', $len - 1 ) ), (int) str_repeat( '9', $len ) );
 
 	$sent = bbotp_send_code( $phone, $code );
 	if ( is_wp_error( $sent ) ) {
 		return $sent;
 	}
 
-	set_transient(
-		bbotp_key( 'otp', $phone ),
-		array( 'hash' => bbotp_hash_code( $phone, $code ), 'tries' => 0 ),
-		(int) $s['code_ttl']
-	);
-	set_transient( $cd_key, 1, (int) $s['resend_cooldown'] );
+	set_transient( bbotp_key( 'otp', $phone ), array( 'hash' => bbotp_hash_code( $phone, $code ), 'tries' => 0 ), (int) $s['code_ttl'] );
+	set_transient( bbotp_key( 'cd', $phone ), 1, (int) $s['resend_cooldown'] );
 	set_transient( $ip_key, $ip_cnt + 1, HOUR_IN_SECONDS );
 
 	return array( 'resend_in' => (int) $s['resend_cooldown'], 'code_ttl' => (int) $s['code_ttl'] );
@@ -160,15 +155,10 @@ function bbotp_request_code( $raw_phone ) {
  *  مرحلهٔ ۲: بررسی کد و ورود/ثبت‌نام
  * ---------------------------------------------------------------------- */
 
-/** @return array|WP_Error  آرایهٔ {user_id, is_new} یا خطا */
 function bbotp_verify_code( $raw_phone, $raw_code ) {
 	$s     = bbotp_settings();
 	$phone = bbotp_normalize_phone( $raw_phone );
-	$code  = preg_replace( '/[^0-9]/', '', str_replace(
-		array( '۰','۱','۲','۳','۴','۵','۶','۷','۸','۹' ),
-		array( '0','1','2','3','4','5','6','7','8','9' ),
-		(string) $raw_code
-	) );
+	$code  = preg_replace( '/[^0-9]/', '', bbotp_fa_to_en( $raw_code ) );
 	if ( '' === $phone ) {
 		return new WP_Error( 'phone', 'شمارهٔ موبایل معتبر نیست.' );
 	}
@@ -180,7 +170,7 @@ function bbotp_verify_code( $raw_phone, $raw_code ) {
 	}
 	if ( (int) $stored['tries'] >= (int) $s['max_verify'] ) {
 		delete_transient( $otp_key );
-		return new WP_Error( 'locked', 'تعداد تلاش بیش از حد مجاز. دوباره درخواست کد دهید.' );
+		return new WP_Error( 'locked', 'تعداد تلاش زیاد شد. دوباره درخواست کد دهید.' );
 	}
 	if ( ! hash_equals( $stored['hash'], bbotp_hash_code( $phone, $code ) ) ) {
 		$stored['tries']++;
@@ -188,7 +178,6 @@ function bbotp_verify_code( $raw_phone, $raw_code ) {
 		return new WP_Error( 'wrong', 'کد وارد شده درست نیست.' );
 	}
 
-	// کد درست است؛ دیگر لازم نیست.
 	delete_transient( $otp_key );
 	delete_transient( bbotp_key( 'cd', $phone ) );
 
@@ -196,49 +185,40 @@ function bbotp_verify_code( $raw_phone, $raw_code ) {
 	if ( is_wp_error( $user ) ) {
 		return $user;
 	}
-
 	bbotp_login_user( $user->ID );
-	return array( 'user_id' => $user->ID, 'is_new' => $is_new );
+
+	return array(
+		'user_id'       => $user->ID,
+		'is_new'        => $is_new,
+		'needs_profile' => bbotp_needs_profile( $user->ID ),
+	);
 }
 
-/** کاربر را با شماره پیدا می‌کند یا می‌سازد. */
 function bbotp_get_or_create_user( $phone, &$is_new ) {
 	$is_new = false;
-
-	// ۱) بر اساس متای شماره
-	$found = get_users( array(
-		'meta_key'   => 'bbotp_phone', // phpcs:ignore WordPress.DB.SlowDBQuery
-		'meta_value' => $phone,        // phpcs:ignore WordPress.DB.SlowDBQuery
-		'number'     => 1,
-		'fields'     => 'all',
-	) );
-	if ( $found ) {
-		return $found[0];
+	foreach ( array( 'bbotp_phone', 'billing_phone' ) as $meta ) {
+		$found = get_users( array(
+			'meta_key'   => $meta,   // phpcs:ignore WordPress.DB.SlowDBQuery
+			'meta_value' => $phone,  // phpcs:ignore WordPress.DB.SlowDBQuery
+			'number'     => 1,
+			'fields'     => 'all',
+		) );
+		if ( $found ) {
+			update_user_meta( $found[0]->ID, 'bbotp_phone', $phone );
+			return $found[0];
+		}
 	}
-	// ۲) بر اساس شمارهٔ صورتحساب ووکامرس (مشتریان قدیمی)
-	$found = get_users( array(
-		'meta_key'   => 'billing_phone', // phpcs:ignore WordPress.DB.SlowDBQuery
-		'meta_value' => $phone,          // phpcs:ignore WordPress.DB.SlowDBQuery
-		'number'     => 1,
-		'fields'     => 'all',
-	) );
-	if ( $found ) {
-		update_user_meta( $found[0]->ID, 'bbotp_phone', $phone );
-		return $found[0];
-	}
-	// ۳) بر اساس نام کاربری برابر شماره
 	if ( $existing = get_user_by( 'login', $phone ) ) {
 		update_user_meta( $existing->ID, 'bbotp_phone', $phone );
 		return $existing;
 	}
 
-	// ۴) ساخت کاربر جدید
 	$s   = bbotp_settings();
 	$uid = wp_insert_user( array(
-		'user_login' => $phone,
-		'user_pass'  => wp_generate_password( 24, true ),
-		'role'       => $s['default_role'],
-		'nickname'   => $phone,
+		'user_login'   => $phone,
+		'user_pass'    => wp_generate_password( 24, true ),
+		'role'         => $s['default_role'],
+		'nickname'     => $phone,
 		'display_name' => $phone,
 	) );
 	if ( is_wp_error( $uid ) ) {
@@ -247,7 +227,6 @@ function bbotp_get_or_create_user( $phone, &$is_new ) {
 	update_user_meta( $uid, 'bbotp_phone', $phone );
 	update_user_meta( $uid, 'billing_phone', $phone );
 	$is_new = true;
-
 	do_action( 'bbotp_user_registered', $uid, $phone );
 	return get_user_by( 'id', $uid );
 }
@@ -262,32 +241,89 @@ function bbotp_login_user( $user_id ) {
 }
 
 /* -------------------------------------------------------------------------
- *  REST API (برای اپلیکیشن و فرم)
- *    POST /wp-json/bistbarg/v1/otp/request  { phone }
- *    POST /wp-json/bistbarg/v1/otp/verify   { phone, code }
+ *  مرحلهٔ ۳: تکمیل پروفایل (نام، نام خانوادگی، استان، شهر)
+ * ---------------------------------------------------------------------- */
+
+function bbotp_save_profile( $user_id, $data ) {
+	if ( ! $user_id || ! get_user_by( 'id', $user_id ) ) {
+		return new WP_Error( 'auth', 'ابتدا باید وارد شوید.' );
+	}
+	$first    = sanitize_text_field( $data['first_name'] ?? '' );
+	$last     = sanitize_text_field( $data['last_name'] ?? '' );
+	$province = sanitize_text_field( $data['province'] ?? '' );
+	$city     = sanitize_text_field( $data['city'] ?? '' );
+	$address  = sanitize_textarea_field( $data['address'] ?? '' );
+
+	if ( '' === $first || '' === $last ) {
+		return new WP_Error( 'name', 'نام و نام خانوادگی را وارد کنید.' );
+	}
+	$locations = bbotp_iran_locations();
+	if ( ! isset( $locations[ $province ] ) ) {
+		return new WP_Error( 'province', 'استان را از فهرست انتخاب کنید.' );
+	}
+	if ( ! in_array( $city, $locations[ $province ], true ) ) {
+		return new WP_Error( 'city', 'شهر را از فهرست استان انتخاب کنید.' );
+	}
+
+	wp_update_user( array(
+		'ID'           => $user_id,
+		'first_name'   => $first,
+		'last_name'    => $last,
+		'display_name' => trim( $first . ' ' . $last ),
+	) );
+	update_user_meta( $user_id, 'billing_first_name', $first );
+	update_user_meta( $user_id, 'billing_last_name', $last );
+	update_user_meta( $user_id, 'billing_state', $province );
+	update_user_meta( $user_id, 'billing_city', $city );
+	update_user_meta( $user_id, 'bbotp_province', $province );
+	update_user_meta( $user_id, 'billing_country', 'IR' );
+	if ( '' !== $address ) {
+		update_user_meta( $user_id, 'billing_address_1', $address );
+	}
+	do_action( 'bbotp_profile_saved', $user_id );
+	return array( 'ok' => true );
+}
+
+/* -------------------------------------------------------------------------
+ *  REST API
  * ---------------------------------------------------------------------- */
 
 add_action( 'rest_api_init', function () {
 	register_rest_route( 'bistbarg/v1', '/otp/request', array(
 		'methods'             => 'POST',
 		'permission_callback' => '__return_true',
-		'callback'            => function ( WP_REST_Request $req ) {
-			$out = bbotp_request_code( $req->get_param( 'phone' ) );
-			if ( is_wp_error( $out ) ) {
-				return new WP_REST_Response( array( 'ok' => false, 'message' => $out->get_error_message() ), 400 );
-			}
-			return new WP_REST_Response( array_merge( array( 'ok' => true ), $out ), 200 );
+		'callback'            => function ( WP_REST_Request $r ) {
+			$out = bbotp_request_code( $r->get_param( 'phone' ) );
+			return is_wp_error( $out )
+				? new WP_REST_Response( array( 'ok' => false, 'message' => $out->get_error_message() ), 400 )
+				: new WP_REST_Response( array_merge( array( 'ok' => true ), $out ), 200 );
 		},
 	) );
 	register_rest_route( 'bistbarg/v1', '/otp/verify', array(
 		'methods'             => 'POST',
 		'permission_callback' => '__return_true',
-		'callback'            => function ( WP_REST_Request $req ) {
-			$out = bbotp_verify_code( $req->get_param( 'phone' ), $req->get_param( 'code' ) );
-			if ( is_wp_error( $out ) ) {
-				return new WP_REST_Response( array( 'ok' => false, 'message' => $out->get_error_message() ), 400 );
-			}
-			return new WP_REST_Response( array( 'ok' => true, 'is_new' => $out['is_new'] ), 200 );
+		'callback'            => function ( WP_REST_Request $r ) {
+			$out = bbotp_verify_code( $r->get_param( 'phone' ), $r->get_param( 'code' ) );
+			return is_wp_error( $out )
+				? new WP_REST_Response( array( 'ok' => false, 'message' => $out->get_error_message() ), 400 )
+				: new WP_REST_Response( array( 'ok' => true, 'is_new' => $out['is_new'], 'needs_profile' => $out['needs_profile'] ), 200 );
+		},
+	) );
+	register_rest_route( 'bistbarg/v1', '/otp/profile', array(
+		'methods'             => 'POST',
+		'permission_callback' => 'is_user_logged_in',
+		'callback'            => function ( WP_REST_Request $r ) {
+			$out = bbotp_save_profile( get_current_user_id(), $r->get_json_params() ?: $r->get_params() );
+			return is_wp_error( $out )
+				? new WP_REST_Response( array( 'ok' => false, 'message' => $out->get_error_message() ), 400 )
+				: new WP_REST_Response( array( 'ok' => true ), 200 );
+		},
+	) );
+	register_rest_route( 'bistbarg/v1', '/locations', array(
+		'methods'             => 'GET',
+		'permission_callback' => '__return_true',
+		'callback'            => function () {
+			return new WP_REST_Response( bbotp_iran_locations(), 200 );
 		},
 	) );
 } );
@@ -298,93 +334,145 @@ add_action( 'rest_api_init', function () {
 
 add_shortcode( 'bistbarg_otp_login', 'bbotp_shortcode' );
 
-function bbotp_shortcode( $atts ) {
-	if ( is_user_logged_in() ) {
+function bbotp_shortcode( $atts = array() ) {
+	if ( is_user_logged_in() && ! bbotp_needs_profile( get_current_user_id() ) ) {
 		$acc = function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'myaccount' ) : home_url( '/' );
-		return '<div class="bbotp-box"><p>شما وارد حساب خود شده‌اید.</p><a class="bbotp-btn" href="' . esc_url( $acc ) . '">حساب کاربری من</a></div>';
+		return '<div class="bbotp-box" dir="rtl"><p style="text-align:center">شما وارد حساب خود شده‌اید.</p><a class="bbotp-btn" href="' . esc_url( $acc ) . '">حساب کاربری من</a></div>';
 	}
-	$redirect = function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'myaccount' ) : home_url( '/' );
-	$rest     = esc_url_raw( rest_url( 'bistbarg/v1/otp' ) );
+	$redirect     = function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'myaccount' ) : home_url( '/' );
+	$rest         = esc_url_raw( rest_url( 'bistbarg/v1' ) );
+	$locations    = wp_json_encode( bbotp_iran_locations(), JSON_UNESCAPED_UNICODE );
+	$start_profile = ( is_user_logged_in() && bbotp_needs_profile( get_current_user_id() ) ) ? '1' : '';
 	ob_start();
 	?>
-	<div class="bbotp-box" dir="rtl" data-rest="<?php echo esc_attr( $rest ); ?>" data-redirect="<?php echo esc_url( $redirect ); ?>">
-		<div class="bbotp-step bbotp-step-phone">
+	<div class="bbotp-box" dir="rtl" data-rest="<?php echo esc_attr( $rest ); ?>" data-redirect="<?php echo esc_url( $redirect ); ?>" data-profile="<?php echo esc_attr( $start_profile ); ?>">
+		<!-- مرحلهٔ ۱: شماره -->
+		<div class="bbotp-step" data-step="phone">
+			<h3 class="bbotp-h">ورود | ثبت‌نام</h3>
 			<label class="bbotp-label" for="bbotp-phone">شمارهٔ موبایل</label>
 			<input id="bbotp-phone" class="bbotp-input" type="tel" inputmode="numeric" dir="ltr" placeholder="09123456789" autocomplete="tel">
-			<button type="button" class="bbotp-btn bbotp-send">دریافت کد</button>
+			<button type="button" class="bbotp-btn" data-act="send">دریافت کد</button>
 		</div>
-		<div class="bbotp-step bbotp-step-code" style="display:none">
-			<p class="bbotp-sent">کد به شمارهٔ <span class="bbotp-shown"></span> پیامک شد. <a href="#" class="bbotp-edit">ویرایش</a></p>
-			<label class="bbotp-label" for="bbotp-code">کد تأیید</label>
+		<!-- مرحلهٔ ۲: کد -->
+		<div class="bbotp-step" data-step="code" style="display:none">
+			<h3 class="bbotp-h">کد تأیید</h3>
+			<p class="bbotp-sent">کد به <span class="bbotp-shown" dir="ltr"></span> پیامک شد. <a href="#" data-act="edit">ویرایش شماره</a></p>
 			<input id="bbotp-code" class="bbotp-input bbotp-code" type="tel" inputmode="numeric" dir="ltr" maxlength="8" placeholder="- - - - -" autocomplete="one-time-code">
-			<button type="button" class="bbotp-btn bbotp-verify">تأیید و ورود</button>
-			<button type="button" class="bbotp-resend" disabled>ارسال دوباره (<span class="bbotp-timer">۶۰</span>)</button>
+			<button type="button" class="bbotp-btn" data-act="verify">تأیید</button>
+			<button type="button" class="bbotp-resend" data-act="resend" disabled>ارسال دوباره (<span class="bbotp-timer">۶۰</span>)</button>
+		</div>
+		<!-- مرحلهٔ ۳: پروفایل -->
+		<div class="bbotp-step" data-step="profile" style="display:none">
+			<h3 class="bbotp-h">تکمیل اطلاعات</h3>
+			<div class="bbotp-row">
+				<div><label class="bbotp-label" for="bbotp-first">نام</label><input id="bbotp-first" class="bbotp-input" type="text" autocomplete="given-name"></div>
+				<div><label class="bbotp-label" for="bbotp-last">نام خانوادگی</label><input id="bbotp-last" class="bbotp-input" type="text" autocomplete="family-name"></div>
+			</div>
+			<div class="bbotp-row">
+				<div><label class="bbotp-label" for="bbotp-province">استان</label><select id="bbotp-province" class="bbotp-input"></select></div>
+				<div><label class="bbotp-label" for="bbotp-city">شهر</label><select id="bbotp-city" class="bbotp-input" disabled></select></div>
+			</div>
+			<label class="bbotp-label" for="bbotp-address">نشانی (اختیاری)</label>
+			<textarea id="bbotp-address" class="bbotp-input" rows="2"></textarea>
+			<button type="button" class="bbotp-btn" data-act="save">ثبت و ورود</button>
 		</div>
 		<p class="bbotp-msg" role="alert"></p>
 	</div>
 	<style>
-		.bbotp-box{max-width:360px;margin:0 auto;font-family:inherit}
-		.bbotp-label{display:block;margin:14px 0 6px;font-weight:600;color:#1f1a10}
-		.bbotp-input{width:100%;box-sizing:border-box;padding:12px 14px;border:1px solid #d8d2bf;border-radius:12px;font-size:16px}
+		.bbotp-box{max-width:380px;margin:0 auto;font-family:inherit;text-align:right}
+		.bbotp-h{margin:0 0 14px;font-size:20px;color:#1f1a10;text-align:center}
+		.bbotp-label{display:block;margin:12px 0 6px;font-weight:600;color:#1f1a10;font-size:14px}
+		.bbotp-input{width:100%;box-sizing:border-box;padding:12px 14px;border:1px solid #d8d2bf;border-radius:12px;font-size:16px;background:#fff;font-family:inherit}
+		select.bbotp-input{height:46px}
 		.bbotp-code{letter-spacing:.4em;text-align:center;font-size:20px}
-		.bbotp-btn{width:100%;margin-top:16px;padding:13px;border:0;border-radius:12px;background:#a9831c;color:#fff;font-size:16px;font-weight:700;cursor:pointer}
+		.bbotp-row{display:flex;gap:10px}
+		.bbotp-row>div{flex:1}
+		.bbotp-btn{display:block;width:100%;margin-top:18px;padding:13px;border:0;border-radius:12px;background:#a9831c;color:#fff;font-size:16px;font-weight:700;cursor:pointer;text-align:center;text-decoration:none}
 		.bbotp-btn:disabled{opacity:.6;cursor:default}
 		.bbotp-resend{width:100%;margin-top:8px;background:none;border:0;color:#a9831c;cursor:pointer;font-size:14px}
 		.bbotp-resend:disabled{color:#9a9384;cursor:default}
-		.bbotp-sent{font-size:13px;color:#6b6352}
-		.bbotp-edit{color:#a9831c}
+		.bbotp-sent{font-size:13px;color:#6b6352}.bbotp-sent a{color:#a9831c}
 		.bbotp-msg{margin-top:12px;color:#b3261e;font-size:14px;min-height:20px;text-align:center}
 		.bbotp-msg.ok{color:#1e7e34}
 	</style>
 	<script>
+	(function(){
+	var DATA=<?php echo $locations; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON. ?>;
 	document.querySelectorAll('.bbotp-box[data-rest]').forEach(function(box){
 		if(box.dataset.bbotpInit)return;box.dataset.bbotpInit='1';
-		var rest=box.dataset.rest, redirect=box.dataset.redirect;
-		var stepPhone=box.querySelector('.bbotp-step-phone'), stepCode=box.querySelector('.bbotp-step-code');
-		var phone=box.querySelector('#bbotp-phone'), code=box.querySelector('#bbotp-code');
-		var msg=box.querySelector('.bbotp-msg'), timerEl=box.querySelector('.bbotp-timer'), resend=box.querySelector('.bbotp-resend');
+		var rest=box.dataset.rest,redirect=box.dataset.redirect;
+		var steps={};box.querySelectorAll('.bbotp-step').forEach(function(s){steps[s.dataset.step]=s;});
+		var msg=box.querySelector('.bbotp-msg');
+		var phone=box.querySelector('#bbotp-phone'),code=box.querySelector('#bbotp-code');
+		var prov=box.querySelector('#bbotp-province'),city=box.querySelector('#bbotp-city');
+		var resend=box.querySelector('[data-act=resend]'),timerEl=box.querySelector('.bbotp-timer');
 		var fa=['۰','۱','۲','۳','۴','۵','۶','۷','۸','۹'];
 		function toFa(n){return String(n).replace(/[0-9]/g,function(d){return fa[+d];});}
 		function say(t,ok){msg.textContent=t||'';msg.className='bbotp-msg'+(ok?' ok':'');}
-		function busy(btn,on,label){btn.disabled=on;if(on){btn.dataset.t=btn.textContent;btn.textContent='لطفاً صبر کنید…';}else{btn.textContent=label||btn.dataset.t;}}
+		function show(name){for(var k in steps)steps[k].style.display=(k===name?'':'none');say('');}
+		function busy(btn,on){if(on){btn.dataset.t=btn.textContent;btn.disabled=true;btn.textContent='لطفاً صبر کنید…';}else{btn.disabled=false;btn.textContent=btn.dataset.t;}}
+		function post(path,data){return fetch(rest+path,{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify(data)}).then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j};});});}
 		var timer=null;
-		function startTimer(sec){
-			clearInterval(timer);resend.disabled=true;
-			var left=sec;timerEl.textContent=toFa(left);
-			timer=setInterval(function(){left--;if(left<=0){clearInterval(timer);resend.disabled=false;resend.innerHTML='ارسال دوباره';}else{timerEl.textContent=toFa(left);}},1000);
-		}
-		function post(path,data){
-			return fetch(rest+path,{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify(data)}).then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j};});});
-		}
-		function sendCode(btn){
-			var p=(phone.value||'').trim();
-			if(p.length<10){say('شمارهٔ موبایل را درست وارد کنید');return;}
-			say('');busy(btn,true);
-			post('/request',{phone:p}).then(function(res){
-				busy(btn,false);
-				if(res.ok&&res.j.ok){
-					box.querySelector('.bbotp-shown').textContent=p;
-					stepPhone.style.display='none';stepCode.style.display='';
-					code.focus();startTimer(res.j.resend_in||60);say('');
-				}else{say(res.j.message||'خطا در ارسال کد');}
-			}).catch(function(){busy(btn,false);say('خطا در ارتباط با سرور');});
-		}
-		box.querySelector('.bbotp-send').addEventListener('click',function(){sendCode(this);});
-		resend.addEventListener('click',function(){if(!resend.disabled)sendCode(box.querySelector('.bbotp-send'));});
-		box.querySelector('.bbotp-edit').addEventListener('click',function(e){e.preventDefault();stepCode.style.display='none';stepPhone.style.display='';say('');});
-		box.querySelector('.bbotp-verify').addEventListener('click',function(){
-			var c=(code.value||'').trim();if(c.length<4){say('کد را کامل وارد کنید');return;}
-			say('');busy(this,true);var self=this;
-			post('/verify',{phone:phone.value.trim(),code:c}).then(function(res){
-				if(res.ok&&res.j.ok){say(res.j.is_new?'ثبت‌نام انجام شد. در حال ورود…':'ورود موفق. در حال انتقال…',true);setTimeout(function(){window.location.href=redirect;},800);}
-				else{busy(self,false);say(res.j.message||'کد نادرست است');}
-			}).catch(function(){busy(self,false);say('خطا در ارتباط با سرور');});
+		function startTimer(sec){clearInterval(timer);resend.disabled=true;var l=sec;timerEl.textContent=toFa(l);timer=setInterval(function(){l--;if(l<=0){clearInterval(timer);resend.disabled=false;resend.innerHTML='ارسال دوباره';}else timerEl.textContent=toFa(l);},1000);}
+
+		// پر کردن استان‌ها
+		prov.innerHTML='<option value="">انتخاب استان</option>';
+		Object.keys(DATA).forEach(function(p){var o=document.createElement('option');o.value=p;o.textContent=p;prov.appendChild(o);});
+		prov.addEventListener('change',function(){
+			city.innerHTML='';var list=DATA[prov.value]||[];
+			if(!list.length){city.disabled=true;city.innerHTML='<option value="">اول استان را انتخاب کنید</option>';return;}
+			city.disabled=false;city.innerHTML='<option value="">انتخاب شهر</option>';
+			list.forEach(function(c){var o=document.createElement('option');o.value=c;o.textContent=c;city.appendChild(o);});
 		});
+
+		function sendCode(btn){var p=(phone.value||'').trim();if(p.replace(/\D/g,'').length<10){say('شمارهٔ موبایل را درست وارد کنید');return;}busy(btn,true);
+			post('/otp/request',{phone:p}).then(function(r){busy(btn,false);if(r.ok&&r.j.ok){box.querySelector('.bbotp-shown').textContent=p;show('code');code.focus();startTimer(r.j.resend_in||60);}else say(r.j.message||'خطا در ارسال کد');}).catch(function(){busy(btn,false);say('خطا در ارتباط با سرور');});}
+
+		box.addEventListener('click',function(e){
+			var act=e.target.getAttribute&&e.target.getAttribute('data-act');if(!act)return;e.preventDefault();var btn=e.target;
+			if(act==='send')sendCode(btn);
+			else if(act==='resend'){if(!resend.disabled)sendCode(box.querySelector('[data-act=send]')||btn);}
+			else if(act==='edit')show('phone');
+			else if(act==='verify'){var c=(code.value||'').trim();if(c.replace(/\D/g,'').length<4){say('کد را کامل وارد کنید');return;}busy(btn,true);
+				post('/otp/verify',{phone:phone.value.trim(),code:c}).then(function(r){busy(btn,false);
+					if(r.ok&&r.j.ok){if(r.j.needs_profile)show('profile');else{say('ورود موفق. در حال انتقال…',true);setTimeout(function(){location.href=redirect;},700);}}
+					else say(r.j.message||'کد نادرست است');}).catch(function(){busy(btn,false);say('خطا در ارتباط با سرور');});}
+			else if(act==='save'){
+				var payload={first_name:box.querySelector('#bbotp-first').value.trim(),last_name:box.querySelector('#bbotp-last').value.trim(),province:prov.value,city:city.value,address:box.querySelector('#bbotp-address').value.trim()};
+				if(!payload.first_name||!payload.last_name){say('نام و نام خانوادگی را وارد کنید');return;}
+				if(!payload.province||!payload.city){say('استان و شهر را انتخاب کنید');return;}
+				busy(btn,true);
+				post('/otp/profile',payload).then(function(r){busy(btn,false);if(r.ok&&r.j.ok){say('ثبت شد. خوش آمدید!',true);setTimeout(function(){location.href=redirect;},700);}else say(r.j.message||'ثبت اطلاعات ناموفق بود');}).catch(function(){busy(btn,false);say('خطا در ارتباط با سرور');});}
+		});
+
+		if(box.dataset.profile)show('profile');
 	});
+	})();
 	</script>
 	<?php
 	return ob_get_clean();
 }
+
+/* -------------------------------------------------------------------------
+ *  غیرفعال کردن فرم پیش‌فرض ووکامرس و نشاندن فرم ما به‌جای آن
+ * ---------------------------------------------------------------------- */
+
+add_action( 'woocommerce_before_customer_login_form', function () {
+	$s = bbotp_settings();
+	if ( empty( $s['replace_wc'] ) ) {
+		return;
+	}
+	// فرم‌های پیش‌فرض ورود/ثبت‌نام را پنهان کن و فرم ما را نشان بده.
+	echo '<style>#customer_login .u-column1, #customer_login .u-column2, .woocommerce-form-login, .woocommerce-form-register, #customer_login > h2 { display:none !important; } #customer_login{display:block !important}</style>';
+	echo do_shortcode( '[bistbarg_otp_login]' );
+}, 5 );
+
+// اگر کاربر وارد شده ولی پروفایلش ناقص است، در صفحهٔ حساب، فرم تکمیل را نشان بده.
+add_action( 'woocommerce_account_dashboard', function () {
+	if ( is_user_logged_in() && bbotp_needs_profile( get_current_user_id() ) ) {
+		echo do_shortcode( '[bistbarg_otp_login]' );
+	}
+}, 1 );
 
 /* -------------------------------------------------------------------------
  *  صفحهٔ تنظیمات
@@ -399,7 +487,7 @@ function bbotp_settings_page() {
 		return;
 	}
 	if ( isset( $_POST['bbotp_save'] ) && check_admin_referer( 'bbotp_settings' ) ) {
-		$new = array(
+		update_option( 'bbotp_settings', array(
 			'api_key'         => sanitize_text_field( wp_unslash( $_POST['api_key'] ?? '' ) ),
 			'template'        => sanitize_text_field( wp_unslash( $_POST['template'] ?? 'verify' ) ),
 			'code_length'     => max( 4, min( 8, (int) ( $_POST['code_length'] ?? 5 ) ) ),
@@ -408,25 +496,23 @@ function bbotp_settings_page() {
 			'max_verify'      => max( 3, (int) ( $_POST['max_verify'] ?? 5 ) ),
 			'ip_hourly_limit' => max( 3, (int) ( $_POST['ip_hourly_limit'] ?? 15 ) ),
 			'default_role'    => sanitize_key( $_POST['default_role'] ?? 'customer' ),
-		);
-		update_option( 'bbotp_settings', $new );
+			'replace_wc'      => empty( $_POST['replace_wc'] ) ? 0 : 1,
+		) );
 		echo '<div class="notice notice-success"><p>ذخیره شد.</p></div>';
 	}
-	$s = bbotp_settings();
+	$raw = wp_parse_args( get_option( 'bbotp_settings', array() ), bbotp_defaults() );
+	$s   = bbotp_settings();
 	?>
 	<div class="wrap" style="direction:rtl;text-align:right">
-		<h1>ورود با موبایل بیست‌برگ</h1>
-		<p>فرم ورود/ثبت‌نام را با این کد کوتاه در هر صفحه‌ای بگذارید: <code>[bistbarg_otp_login]</code></p>
+		<h1>ورود و ثبت‌نام با موبایل</h1>
+		<p>فرم را با این کد کوتاه در هر صفحه‌ای بگذارید: <code>[bistbarg_otp_login]</code></p>
 		<form method="post">
 			<?php wp_nonce_field( 'bbotp_settings' ); ?>
 			<table class="form-table">
-				<tr><th>کلید API کاوه‌نگار</th><td>
-					<input type="text" name="api_key" value="<?php echo esc_attr( get_option( 'bbotp_settings' )['api_key'] ?? '' ); ?>" class="regular-text" dir="ltr" placeholder="اگر خالی بماند از افزونهٔ پیامک فعلی خوانده می‌شود">
-				</td></tr>
-				<tr><th>نام الگوی OTP</th><td>
-					<input type="text" name="template" value="<?php echo esc_attr( $s['template'] ); ?>" class="regular-text" dir="ltr">
-					<p class="description">در پنل کاوه‌نگار یک الگوی تأیید بسازید که متنش شامل <code>%token%</code> باشد، مثلاً: «کد ورود شما: %token%». نام همان الگو را اینجا بگذارید.</p>
-				</td></tr>
+				<tr><th>کلید API کاوه‌نگار</th><td><input type="text" name="api_key" value="<?php echo esc_attr( $raw['api_key'] ); ?>" class="regular-text" dir="ltr" placeholder="خالی = استفاده از افزونهٔ پیامک فعلی"></td></tr>
+				<tr><th>نام الگوی OTP</th><td><input type="text" name="template" value="<?php echo esc_attr( $s['template'] ); ?>" class="regular-text" dir="ltr">
+					<p class="description">در پنل کاوه‌نگار یک الگوی تأیید بسازید که متنش شامل <code>%token%</code> باشد (مثلاً «کد ورود شما: %token%») و نامش را اینجا بگذارید.</p></td></tr>
+				<tr><th>غیرفعال کردن فرم پیش‌فرض ووکامرس</th><td><label><input type="checkbox" name="replace_wc" value="1" <?php checked( $s['replace_wc'], 1 ); ?>> در صفحهٔ «حساب کاربری من» به‌جای فرم ایمیل/رمز، همین فرم موبایلی نشان داده شود.</label></td></tr>
 				<tr><th>تعداد ارقام کد</th><td><input type="number" name="code_length" value="<?php echo esc_attr( $s['code_length'] ); ?>" min="4" max="8"></td></tr>
 				<tr><th>مدت اعتبار کد (ثانیه)</th><td><input type="number" name="code_ttl" value="<?php echo esc_attr( $s['code_ttl'] ); ?>" min="30"></td></tr>
 				<tr><th>فاصلهٔ ارسال دوباره (ثانیه)</th><td><input type="number" name="resend_cooldown" value="<?php echo esc_attr( $s['resend_cooldown'] ); ?>" min="30"></td></tr>
