@@ -37,6 +37,15 @@ curl -fsSL https://github.com/akoSalman/bistbarg-App/releases/latest/download/in
 
 ۴. در وردپرس به «اعلان‌های اپ ← تنظیمات» بروید و «سرور سوکت» را روشن کنید. وضعیت باید «● متصل است» نشان داده شود.
 
+## آزمایش از بیرون
+عدد **401** یعنی همه چیز درست است: سرور سوکت جواب داده و فقط توکن نداشتیم. حتماً از `--http1.1` استفاده کنید، چون وب‌سوکت روی HTTP/2 با curl کار نمی‌کند.
+```bash
+curl --http1.1 -s -o /dev/null -w '%{http_code}\n' -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
+  -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' https://bistbarg.com/bistbarg-socket/
+```
+- اگر جواب `404` با متن `{"error":"not found"}` بود، درخواست به سرور سوکت رسیده ولی سربرگ Upgrade در راه حذف شده است. در Apache باید از `upgrade=websocket` استفاده کنید، نه `ws://`.
+- اگر جواب `404` با صفحهٔ وردپرس بود، تنظیم وب‌سرور اعمال نشده است.
+
 ## دستورهای مفید
 ```bash
 sudo journalctl -u bistbarg-socket -f      # دیدن گزارش زنده (هر اعلان و تعداد گوشی‌های گیرنده)

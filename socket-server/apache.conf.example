@@ -1,8 +1,8 @@
-# If the site runs on Apache instead of nginx. Needs:  sudo a2enmod proxy proxy_http proxy_wstunnel rewrite
-# Add inside the <VirtualHost *:443> block for bistbarg.com, then:  sudo systemctl reload apache2
-RewriteEngine On
-RewriteCond %{HTTP:Upgrade} =websocket [NC]
-RewriteRule ^/bistbarg-socket/(.*) ws://127.0.0.1:8090/$1 [P,L]
-ProxyPass        /bistbarg-socket/ http://127.0.0.1:8090/
+# If the site runs on Apache instead of nginx (Apache 2.4.47+; needs mod_proxy, mod_proxy_http).
+# Add inside the <VirtualHost *:443> block for the domain, then:  apachectl -t && systemctl restart httpd
+# DirectAdmin: put these lines in /usr/local/directadmin/data/users/<user>/domains/<domain>.cust_httpd
+#              (or Admin → Custom HTTPD Configurations → domain → httpd.conf), then
+#              cd /usr/local/directadmin/custombuild && ./build rewrite_confs
+ProxyPass /bistbarg-socket/ http://127.0.0.1:8090/ upgrade=websocket
 ProxyPassReverse /bistbarg-socket/ http://127.0.0.1:8090/
 ProxyTimeout 3600

@@ -198,11 +198,21 @@ if command -v nginx >/dev/null; then
 سپس:  nginx -t && systemctl reload nginx
 NGINX
 elif command -v apache2 >/dev/null || command -v httpd >/dev/null; then
-  echo "این سرور Apache دارد. فایل apache.conf.example در $APP_DIR را ببینید."
+  echo "این سرور Apache دارد. این سه خط را داخل VirtualHost دامنه (پورت 443) بگذارید:"
+  cat <<APACHE
+
+    ProxyPass /bistbarg-socket/ http://127.0.0.1:${PORT}/ upgrade=websocket
+    ProxyPassReverse /bistbarg-socket/ http://127.0.0.1:${PORT}/
+    ProxyTimeout 3600
+
+APACHE
 fi
-[ -d /usr/local/directadmin ] && echo "DirectAdmin: تنظیم nginx را در Custom HTTPD Configurations دامنه وارد کنید."
+[ -d /usr/local/directadmin ] && echo "DirectAdmin: وب‌سرور فعال را با  grep ^webserver= /usr/local/directadmin/custombuild/options.conf  ببینید و تنظیم را در Admin ← Custom HTTPD Configurations ← دامنه وارد کنید (یا فایل <دامنه>.cust_httpd / .cust_nginx سپس ./build rewrite_confs)."
 [ -d /usr/local/cpanel ] && echo "cPanel: تنظیم را در include مخصوص دامنه (userdata) وارد کنید."
 [ -d /www/server/panel ] && echo "aaPanel: سایت ← Config ← تنظیم nginx را داخل بلوک server اضافه کنید."
+echo
+echo "آزمایش از بیرون (باید 401 بدهد):"
+echo "  curl --http1.1 -s -o /dev/null -w '%{http_code}\\n' -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' https://<دامنه>/bistbarg-socket/"
 echo
 echo "دستورهای مفید:"
 echo "  وضعیت:        systemctl status $SERVICE"
