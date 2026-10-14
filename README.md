@@ -35,7 +35,10 @@ Every push to `main` builds the app with GitHub Actions and publishes it on the 
 
 Every build attaches `bistbarg-push.zip` to the [latest release](https://github.com/akoSalman/bistbarg-App/releases/latest). Install it from **Plugins → Add New → Upload Plugin**.
 
-How delivery works: the app checks `wp-admin/admin-ajax.php?action=bistbarg_notifications` every 30 s while it is open. While it is closed, Android checks about every 15 minutes (WorkManager). No Firebase, no socket server and no extra hosting are needed. The site's login cookies identify the customer for personal notifications.
+How delivery works:
+- **Instant (socket):** `socket-server/` is a small Node.js WebSocket server that runs on the site's server, behind nginx/Apache at `wss://bistbarg.com/bistbarg-socket/`. While the app is open it keeps a live connection. When WordPress queues a notification, the server pings only the phones it is meant for, and they fetch and show it right away. Setup steps (in Persian) are in `socket-server/README.md`, and the files ship as `bistbarg-socket.zip` in each release.
+- **Fallback:** the app also checks `wp-admin/admin-ajax.php?action=bistbarg_notifications` every 30 s while the socket is down. While the app is closed, Android checks about every 15 minutes (WorkManager).
+- The site's login cookies identify the customer, both for the socket token and for personal notifications.
 
 ## Configuration
 

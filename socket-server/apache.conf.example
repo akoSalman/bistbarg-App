@@ -1,0 +1,8 @@
+# If the site runs on Apache instead of nginx. Needs:  sudo a2enmod proxy proxy_http proxy_wstunnel rewrite
+# Add inside the <VirtualHost *:443> block for bistbarg.com, then:  sudo systemctl reload apache2
+RewriteEngine On
+RewriteCond %{HTTP:Upgrade} =websocket [NC]
+RewriteRule ^/bistbarg-socket/(.*) ws://127.0.0.1:8090/$1 [P,L]
+ProxyPass        /bistbarg-socket/ http://127.0.0.1:8090/
+ProxyPassReverse /bistbarg-socket/ http://127.0.0.1:8090/
+ProxyTimeout 3600

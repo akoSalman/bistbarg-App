@@ -25,6 +25,17 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Test socket server
+        working-directory: socket-server
+        run: npm ci && npm test
+
+      - name: Check WordPress plugin PHP syntax
+        run: for f in $(find wordpress-plugin -name '*.php'); do php -l "$f"; done
+
       - name: Build debug APK
         run: ./gradlew --no-daemon assembleDebug -PVERSION_CODE=${{ github.run_number }}
 
@@ -62,6 +73,7 @@ jobs:
           mkdir -p dist
           cp app/build/outputs/apk/debug/app-debug.apk dist/bistbarg.apk
           (cd wordpress-plugin && zip -qr ../dist/bistbarg-push.zip bistbarg-push)
+          (cd socket-server && zip -q ../dist/bistbarg-socket.zip server.js package.json package-lock.json bistbarg-socket.service nginx.conf.example apache.conf.example README.md)
           if [ -f app/build/outputs/apk/release/app-release.apk ]; then cp app/build/outputs/apk/release/app-release.apk dist/bistbarg-release.apk; fi
           if [ -f app/build/outputs/bundle/release/app-release.aab ]; then cp app/build/outputs/bundle/release/app-release.aab dist/bistbarg-release.aab; fi
 
@@ -81,6 +93,9 @@ jobs:
 
             **bistbarg-push.zip** is the WordPress plugin for sending notifications to the app
             (WordPress admin → Plugins → Add New → Upload Plugin).
+
+            **bistbarg-socket.zip** is the real-time socket server to run on the site's server
+            (see README.md inside).
 
             Commit: ${{ github.sha }}
           files: dist/*

@@ -1,7 +1,7 @@
 === Bistbarg App Notifications ===
 Requires at least: 5.8
 Requires PHP: 7.4
-Stable tag: 1.0.0
+Stable tag: 1.1.0
 
 ارسال اعلان به کاربران اپلیکیشن اندروید بیست‌برگ.
 

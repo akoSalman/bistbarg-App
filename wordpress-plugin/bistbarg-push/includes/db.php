@@ -83,14 +83,24 @@ function bbp_default_order_templates() {
 
 function bbp_default_settings() {
 	return array(
-		'order_enabled' => 1,
-		'orders'        => bbp_default_order_templates(),
+		'order_enabled'   => 1,
+		'orders'          => bbp_default_order_templates(),
+		'socket_enabled'  => 0,
+		'socket_url'      => bbp_socket_default_url(),
+		'socket_internal' => 'http://127.0.0.1:8090',
+		'socket_secret'   => '',
 	);
 }
 
 function bbp_settings() {
-	$saved = get_option( 'bbp_settings', array() );
-	return wp_parse_args( is_array( $saved ) ? $saved : array(), bbp_default_settings() );
+	$saved    = get_option( 'bbp_settings', array() );
+	$settings = wp_parse_args( is_array( $saved ) ? $saved : array(), bbp_default_settings() );
+	if ( strlen( $settings['socket_secret'] ) < 32 ) {
+		// Shared with the socket server; generated once.
+		$settings['socket_secret'] = wp_generate_password( 48, false, false );
+		update_option( 'bbp_settings', $settings );
+	}
+	return $settings;
 }
 
 /**
@@ -135,5 +145,18 @@ function bbp_add_notification( $args ) {
 		array( '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s' )
 	);
 
-	return $ok ? (int) $wpdb->insert_id : 0;
+	if ( ! $ok ) {
+		return 0;
+	}
+	$id = (int) $wpdb->insert_id;
+
+	/**
+	 * Fires after a notification is queued (used for real-time socket delivery).
+	 *
+	 * @param int    $id       Notification id.
+	 * @param string $audience all|members|user.
+	 * @param int    $user_id  Target user for the "user" audience.
+	 */
+	do_action( 'bbp_notification_added', $id, $d['audience'], (int) $d['user_id'] );
+	return $id;
 }

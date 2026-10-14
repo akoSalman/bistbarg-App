@@ -110,10 +110,21 @@ function bbp_handle_settings() {
 	}
 	check_admin_referer( 'bbp_settings' );
 
+	$current  = bbp_settings();
 	$settings = array(
-		'order_enabled' => empty( $_POST['order_enabled'] ) ? 0 : 1,
-		'orders'        => array(),
+		'order_enabled'   => empty( $_POST['order_enabled'] ) ? 0 : 1,
+		'orders'          => array(),
+		'socket_enabled'  => empty( $_POST['socket_enabled'] ) ? 0 : 1,
+		'socket_url'      => isset( $_POST['socket_url'] ) ? esc_url_raw( wp_unslash( $_POST['socket_url'] ), array( 'ws', 'wss' ) ) : $current['socket_url'],
+		'socket_internal' => isset( $_POST['socket_internal'] ) ? esc_url_raw( wp_unslash( $_POST['socket_internal'] ), array( 'http', 'https' ) ) : $current['socket_internal'],
+		'socket_secret'   => $current['socket_secret'],
 	);
+	if ( '' === $settings['socket_url'] ) {
+		$settings['socket_url'] = bbp_socket_default_url();
+	}
+	if ( '' === $settings['socket_internal'] ) {
+		$settings['socket_internal'] = 'http://127.0.0.1:8090';
+	}
 	$posted = isset( $_POST['orders'] ) && is_array( $_POST['orders'] ) ? wp_unslash( $_POST['orders'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput -- sanitized below.
 	foreach ( $posted as $status => $t ) {
 		$settings['orders'][ sanitize_key( $status ) ] = array(
@@ -162,7 +173,8 @@ function bbp_render_page() {
 		'history'  => 'تاریخچه',
 		'settings' => 'اعلان‌های خودکار سفارش',
 	);
-	$stats = bbp_stats();
+	$stats  = bbp_stats();
+	$health = bbp_socket_health();
 	?>
 	<div class="wrap bbp-wrap">
 		<h1 class="bbp-title"><span class="dashicons dashicons-megaphone"></span> اعلان‌های اپلیکیشن بیست‌برگ</h1>
@@ -172,6 +184,9 @@ function bbp_render_page() {
 			<div class="bbp-stat"><strong><?php echo esc_html( number_format_i18n( $stats['devices'] ) ); ?></strong><span>گوشی فعال (۳۰ روز اخیر)</span></div>
 			<div class="bbp-stat"><strong><?php echo esc_html( number_format_i18n( $stats['members'] ) ); ?></strong><span>کاربر عضو در اپ</span></div>
 			<div class="bbp-stat"><strong><?php echo esc_html( number_format_i18n( $stats['sent'] ) ); ?></strong><span>اعلان ارسال‌شده</span></div>
+			<?php if ( $health ) : ?>
+				<div class="bbp-stat bbp-stat-live"><strong><span class="bbp-dot"></span><?php echo esc_html( number_format_i18n( (int) $health['clients'] ) ); ?></strong><span>گوشی آنلاین همین الان (سوکت)</span></div>
+			<?php endif; ?>
 		</div>
 
 		<nav class="nav-tab-wrapper">
@@ -358,6 +373,36 @@ function bbp_render_settings() {
 				<textarea name="<?php echo esc_attr( $name ); ?>[body]" rows="2" placeholder="متن"><?php echo esc_textarea( $t['body'] ); ?></textarea>
 			</div>
 		<?php endforeach; ?>
+		</div>
+
+		<h2 class="bbp-section">سرور سوکت (ارسال فوری)</h2>
+		<?php
+		$health = bbp_socket_health();
+		if ( ! empty( $settings['socket_enabled'] ) ) {
+			echo $health
+				? '<p class="bbp-ok">● متصل است — ' . esc_html( number_format_i18n( (int) $health['clients'] ) ) . ' گوشی همین الان آنلاین هستند.</p>'
+				: '<p class="bbp-bad">● سرور سوکت در دسترس نیست. اعلان‌ها همچنان با روش عادی (تا چند دقیقه) می‌رسند. راهنمای نصب را ببینید.</p>';
+		}
+		?>
+		<label class="bbp-switch">
+			<input type="checkbox" name="socket_enabled" value="1" <?php checked( ! empty( $settings['socket_enabled'] ) ); ?>>
+			ارسال فوری اعلان‌ها از طریق سرور سوکت
+		</label>
+		<div class="bbp-socket-grid">
+			<label class="bbp-field">
+				<span>آدرس عمومی سوکت (برای اپ)</span>
+				<input type="text" name="socket_url" dir="ltr" value="<?php echo esc_attr( $settings['socket_url'] ); ?>">
+				<small>همان مسیری که در nginx/Apache تنظیم می‌کنید.</small>
+			</label>
+			<label class="bbp-field">
+				<span>آدرس داخلی سرور سوکت (برای وردپرس)</span>
+				<input type="text" name="socket_internal" dir="ltr" value="<?php echo esc_attr( $settings['socket_internal'] ); ?>">
+			</label>
+			<div class="bbp-field">
+				<span>رمز سوکت</span>
+				<input type="text" readonly dir="ltr" class="bbp-secret" value="<?php echo esc_attr( $settings['socket_secret'] ); ?>" onclick="this.select()">
+				<small>این رمز را در فایل سرویس سرور سوکت (<code>BISTBARG_SECRET</code>) قرار دهید. آن را به کسی ندهید.</small>
+			</div>
 		</div>
 
 		<button type="submit" class="button button-primary bbp-submit">ذخیرهٔ تنظیمات</button>

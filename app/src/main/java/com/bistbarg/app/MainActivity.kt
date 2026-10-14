@@ -61,6 +61,9 @@ class MainActivity : ComponentActivity() {
     private var introSequenceDone = false
     private var siteBarsLight: Boolean? = null
 
+    private val socket by lazy { SocketClient(applicationContext) }
+    private var lastLoggedIn: Boolean? = null
+
     private val memberFlow = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         when (result.data?.getStringExtra(EXTRA_ACTION)) {
             // Freshly registered (and logged in): reload so the site shows the account.
@@ -123,13 +126,14 @@ class MainActivity : ComponentActivity() {
             webView.loadUrl(siteUrlFrom(intent) ?: BuildConfig.STORE_URL)
         }
 
-        // Notifications: every ~15 min in the background, every 30 s while the app is open.
+        // Notifications: instant over the socket while the app is open (polling as a fallback),
+        // about every 15 min in the background.
         Notifications.schedule(this)
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 while (true) {
                     withContext(Dispatchers.IO) { Notifications.sync(applicationContext) }
-                    delay(30_000)
+                    delay(if (socket.isConnected) 5 * 60_000L else 30_000L)
                 }
             }
         }
@@ -232,6 +236,7 @@ class MainActivity : ComponentActivity() {
 
             override fun onPageFinished(view: WebView, url: String) {
                 onFirstPageShown()
+                reconnectSocketIfLoginChanged()
                 swipe.isRefreshing = false
                 if (!mainFrameFailed) errorView.visibility = View.GONE
                 applySiteColors()
@@ -378,6 +383,24 @@ class MainActivity : ComponentActivity() {
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         webView.saveState(outState)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        socket.start()
+    }
+
+    override fun onStop() {
+        socket.stop()
+        super.onStop()
+    }
+
+    /** The socket token says who the customer is, so get a new one after login/logout. */
+    private fun reconnectSocketIfLoginChanged() {
+        val cookies = runCatching { CookieManager.getInstance().getCookie(BuildConfig.STORE_URL) }.getOrNull().orEmpty()
+        val loggedIn = cookies.contains("wordpress_logged_in_")
+        if (lastLoggedIn != null && lastLoggedIn != loggedIn) socket.restart()
+        lastLoggedIn = loggedIn
     }
 
     override fun onResume() {

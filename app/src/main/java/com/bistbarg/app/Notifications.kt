@@ -34,8 +34,8 @@ import java.util.concurrent.TimeUnit
 /**
  * Fetches notifications from the "Bistbarg App Notifications" WordPress plugin and shows them.
  *
- * No Firebase or socket server is needed: the app asks the site for anything new every 30 s while
- * it is open, and Android runs [NotificationWorker] about every 15 minutes while it is closed.
+ * While the app is open, [SocketClient] gets an instant ping from the Bistbarg socket server (with
+ * polling as a fallback); while it is closed, Android runs [NotificationWorker] about every 15 min.
  * The site's login cookies are sent along, so personal notifications (e.g. order updates) reach the
  * right customer.
  */
@@ -55,11 +55,17 @@ object Notifications {
 
     /** Checks the site for new notifications and shows them. Safe to call from any background thread. */
     @Synchronized
-    fun sync(context: Context) {
+    fun deviceId(context: Context): String {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val deviceId = prefs.getString("device_id", null) ?: UUID.randomUUID().toString().also {
+        return prefs.getString("device_id", null) ?: UUID.randomUUID().toString().also {
             prefs.edit().putString("device_id", it).apply()
         }
+    }
+
+    @Synchronized
+    fun sync(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val deviceId = deviceId(context)
         val since = prefs.getLong("cursor", 0L)
         val base = BuildConfig.STORE_URL.trimEnd('/')
         val url = "$base/wp-admin/admin-ajax.php?action=bistbarg_notifications" +

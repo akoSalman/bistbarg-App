@@ -40,3 +40,10 @@
 .bbp-statuses { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; margin: 18px 0; }
 .bbp-status { border: 1px solid #ece6d2; border-radius: 12px; padding: 14px; background: #fffdf6; }
 .bbp-status input[type=text], .bbp-status textarea { width: 100%; border-radius: 8px; margin-top: 6px; }
+.bbp-section { margin-top: 28px; padding-top: 20px; border-top: 1px solid #eee; }
+.bbp-socket-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0 18px; margin-top: 12px; }
+.bbp-secret { font-family: monospace; background: #fafafa; }
+.bbp-ok { color: #1e7e34; font-weight: 600; }
+.bbp-bad { color: #b3261e; font-weight: 600; }
+.bbp-stat-live strong { display: flex; align-items: center; gap: 8px; }
+.bbp-dot { width: 10px; height: 10px; border-radius: 50%; background: #2fb344; box-shadow: 0 0 0 4px rgba(47,179,68,.2); display: inline-block; }
