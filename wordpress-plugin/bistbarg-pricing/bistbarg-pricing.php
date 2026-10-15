@@ -1,8 +1,8 @@
 <?php
 /**
- * Plugin Name:       قیمت‌گذاری دلاری بیست‌برگ
- * Description:       قیمت محصولات را به دلار وارد کنید؛ قیمت تومانی خودکار بر اساس نرخ دلار (خودکار از API یا دستی) محاسبه و با تغییر نرخ به‌روز می‌شود.
- * Version:           1.2.0
+ * Plugin Name:       قیمت دلاری مدیا
+ * Description:       قیمت محصولات را به دلار وارد کنید؛ قیمت تومانی خودکار بر اساس نرخ دلار (خودکار از API یا دستی) محاسبه و با تغییر نرخ به‌روز می‌شود. دارای جدول قیمت با تصویر محصول.
+ * Version:           1.3.0
  * Author:            Bistbarg
  * Requires at least: 5.8
  * Requires PHP:      7.4
@@ -11,7 +11,8 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'BBPRICE_VERSION', '1.2.0' );
+define( 'BBPRICE_VERSION', '1.3.0' );
+define( 'BBPRICE_DEV_PHONE', '09031784732' );
 define( 'BBPRICE_CRON', 'bbprice_update_event' );
 
 /* -------------------------------------------------------------------------
@@ -309,9 +310,29 @@ add_action( 'woocommerce_save_product_variation', function ( $variation_id, $loo
  * ---------------------------------------------------------------------- */
 
 add_action( 'admin_menu', function () {
-	add_submenu_page( 'woocommerce', 'قیمت‌گذاری دلاری', 'قیمت‌گذاری دلاری', 'manage_woocommerce', 'bistbarg-pricing', 'bbprice_admin_page' );
-	add_submenu_page( 'woocommerce', 'جدول قیمت دلاری', 'جدول قیمت دلاری', 'manage_woocommerce', 'bistbarg-pricing-table', 'bbprice_table_page' );
+	add_menu_page( 'قیمت دلاری مدیا', 'قیمت دلاری مدیا', 'manage_woocommerce', 'bistbarg-pricing', 'bbprice_admin_page', 'dashicons-money-alt', 55 );
+	add_submenu_page( 'bistbarg-pricing', 'تنظیمات نرخ', 'تنظیمات نرخ', 'manage_woocommerce', 'bistbarg-pricing', 'bbprice_admin_page' );
+	add_submenu_page( 'bistbarg-pricing', 'جدول قیمت', 'جدول قیمت', 'manage_woocommerce', 'bistbarg-pricing-table', 'bbprice_table_page' );
 } );
+
+/** کارت تماس با برنامه‌نویس (در پایین هر صفحه). */
+function bbprice_dev_box() {
+	$ph = BBPRICE_DEV_PHONE;
+	echo '<div class="bbprice-dev">
+		<div class="bbprice-dev-ic">👨‍💻</div>
+		<div class="bbprice-dev-txt"><b>پشتیبانی و برنامه‌نویسی</b><span>برای سفارش افزونه و سایت تماس بگیرید</span></div>
+		<a class="bbprice-dev-call" href="tel:' . esc_attr( $ph ) . '">📞 ' . esc_html( $ph ) . '</a>
+	</div>
+	<style>
+		.bbprice-dev{display:flex;align-items:center;gap:14px;background:linear-gradient(135deg,#1f1a10,#3a2f17);color:#fff;border-radius:18px;padding:16px 20px;margin:22px 0 8px;max-width:980px}
+		.bbprice-dev-ic{font-size:30px}
+		.bbprice-dev-txt{flex:1;display:flex;flex-direction:column}
+		.bbprice-dev-txt b{color:#f2d879;font-size:15px}
+		.bbprice-dev-txt span{color:#cfc6ad;font-size:12px}
+		.bbprice-dev-call{background:#c7a742;color:#1f1a10 !important;border-radius:12px;padding:10px 18px;font-weight:800;text-decoration:none;font-size:16px;direction:ltr;white-space:nowrap}
+		.bbprice-dev-call:hover{filter:brightness(1.06)}
+	</style>';
+}
 
 function bbprice_admin_page() {
 	if ( ! current_user_can( 'manage_woocommerce' ) ) {
@@ -461,6 +482,7 @@ function bbprice_admin_page() {
 		</form>
 
 		<p class="bbprice-foot">در صفحهٔ هر محصول، بخش «عمومی»، فیلد <b>«قیمت دلاری ($)»</b> را پر کنید؛ قیمت تومانی خودکار حساب می‌شود.</p>
+		<?php bbprice_dev_box(); ?>
 	</div>
 
 	<style>
@@ -614,11 +636,11 @@ function bbprice_table_page() {
 		<form method="post">
 			<?php wp_nonce_field( 'bbprice_table' ); ?>
 			<table class="bbprice-table">
-				<thead><tr><th>نام محصول</th><th>قیمت دلاری ($)</th><th>قیمت فروشگاه</th></tr></thead>
+				<thead><tr><th class="bbprice-imgcol">تصویر</th><th>نام محصول</th><th>قیمت دلاری ($)</th><th>قیمت فروشگاه</th></tr></thead>
 				<tbody>
 				<?php
 				if ( ! $q->have_posts() ) {
-					echo '<tr><td colspan="3" class="bbprice-empty">محصولی یافت نشد.</td></tr>';
+					echo '<tr><td colspan="4" class="bbprice-empty">محصولی یافت نشد.</td></tr>';
 				}
 				while ( $q->have_posts() ) :
 					$q->the_post();
@@ -628,7 +650,7 @@ function bbprice_table_page() {
 					}
 					if ( $product->is_type( 'variable' ) ) :
 						?>
-						<tr class="bbprice-parent"><td colspan="3"><span class="bbprice-tag">متغیر</span> <?php echo esc_html( $product->get_name() ); ?> — <a href="<?php echo esc_url( get_edit_post_link( $product->get_id() ) ); ?>" target="_blank">ویرایش متغیرها</a></td></tr>
+						<tr class="bbprice-parent"><td colspan="4"><span class="bbprice-tag">متغیر</span> <?php echo esc_html( $product->get_name() ); ?> — <a href="<?php echo esc_url( get_edit_post_link( $product->get_id() ) ); ?>" target="_blank">ویرایش متغیرها</a></td></tr>
 						<?php
 						foreach ( $product->get_children() as $vid ) :
 							$v = wc_get_product( $vid );
@@ -636,6 +658,7 @@ function bbprice_table_page() {
 							$attrs = implode( '، ', array_filter( $v->get_variation_attributes() ) );
 							?>
 							<tr>
+								<td class="bbprice-imgcol"><?php echo $v->get_image( array( 46, 46 ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></td>
 								<td class="bbprice-name bbprice-sub">↳ <?php echo esc_html( $attrs ? $attrs : ( '#' . $vid ) ); ?></td>
 								<td><input type="number" step="0.01" min="0" name="usd[<?php echo (int) $vid; ?>]" value="<?php echo esc_attr( $v->get_meta( '_bbprice_usd' ) ); ?>" class="bbprice-usd"></td>
 								<td class="bbprice-money"><?php echo esc_html( bbprice_price_label( $v ) ); ?></td>
@@ -643,6 +666,7 @@ function bbprice_table_page() {
 						<?php endforeach; ?>
 					<?php else : ?>
 						<tr>
+							<td class="bbprice-imgcol"><?php echo $product->get_image( array( 46, 46 ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></td>
 							<td class="bbprice-name"><?php echo esc_html( $product->get_name() ); ?></td>
 							<td><input type="number" step="0.01" min="0" name="usd[<?php echo (int) $product->get_id(); ?>]" value="<?php echo esc_attr( $product->get_meta( '_bbprice_usd' ) ); ?>" class="bbprice-usd"></td>
 							<td class="bbprice-money"><?php echo esc_html( bbprice_price_label( $product ) ); ?></td>
@@ -688,7 +712,10 @@ function bbprice_table_page() {
 			.bbprice-pager{display:flex;gap:6px;flex-wrap:wrap;margin:16px 0}
 			.bbprice-pager a{min-width:36px;text-align:center;padding:7px 10px;border:1px solid #e3dcc6;border-radius:10px;color:#6b6352;text-decoration:none}
 			.bbprice-pager a.on{background:#a9831c;color:#fff;border-color:#a9831c}
+			.bbprice-imgcol{width:58px}
+			.bbprice-imgcol img{width:46px;height:46px;object-fit:cover;border-radius:10px;display:block;background:#f4efe3}
 		</style>
+		<?php bbprice_dev_box(); ?>
 	</div>
 	<?php
 }
