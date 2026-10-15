@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       قیمت‌گذاری دلاری بیست‌برگ
  * Description:       قیمت محصولات را به دلار وارد کنید؛ قیمت تومانی خودکار بر اساس نرخ دلار (خودکار از API یا دستی) محاسبه و با تغییر نرخ به‌روز می‌شود.
- * Version:           1.0.0
+ * Version:           1.1.0
  * Author:            Bistbarg
  * Requires at least: 5.8
  * Requires PHP:      7.4
@@ -11,7 +11,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'BBPRICE_VERSION', '1.0.0' );
+define( 'BBPRICE_VERSION', '1.1.0' );
 define( 'BBPRICE_CRON', 'bbprice_update_event' );
 
 /* -------------------------------------------------------------------------
@@ -171,7 +171,17 @@ function bbprice_fetch_rate() {
 	if ( $num <= 0 ) {
 		return new WP_Error( 'value', 'مقدار نرخ نامعتبر است.' );
 	}
-	return 'rial' === $unit ? $num / 10 : $num; // خروجی همیشه تومان
+	$toman = 'rial' === $unit ? $num / 10 : $num; // خروجی همیشه تومان
+	// محافظ: نرخ دلار را در بازهٔ منطقی (تومان) نگه می‌دارد تا خطای ۱۰برابری ریال/تومان رخ ندهد.
+	$guard = 0;
+	while ( $toman > 0 && $toman < 10000 && $guard++ < 4 ) {
+		$toman *= 10;
+	}
+	$guard = 0;
+	while ( $toman > 10000000 && $guard++ < 4 ) {
+		$toman /= 10;
+	}
+	return $toman;
 }
 
 /** نرخ را می‌گیرد، ذخیره می‌کند و قیمت‌ها را به‌روز می‌کند. @return true|WP_Error */
@@ -346,79 +356,185 @@ function bbprice_admin_page() {
 
 	$s    = bbprice_settings();
 	$when = $s['updated_at'] ? wp_date( 'Y/m/d H:i', $s['updated_at'] ) : '—';
+	$rate = (float) $s['rate'];
 	?>
-	<div class="wrap" style="direction:rtl;text-align:right;max-width:820px">
-		<h1>قیمت‌گذاری دلاری بیست‌برگ</h1>
+	<div class="wrap bbprice-wrap">
 		<?php echo $notice; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+		<div class="bbprice-head">
+			<h1>💵 قیمت‌گذاری دلاری</h1>
+			<span class="bbprice-ver">نسخهٔ <?php echo esc_html( BBPRICE_VERSION ); ?></span>
+		</div>
 
-		<div style="background:#fff;border:1px solid #e3dcc6;border-radius:12px;padding:18px;margin:16px 0">
-			<strong style="font-size:16px">نرخ فعلی دلار:</strong>
-			<span style="font-size:22px;color:#a9831c;font-weight:800"><?php echo esc_html( number_format( (float) $s['rate'] ) ); ?> تومان</span>
-			<div style="color:#6b6352;margin-top:6px">آخرین به‌روزرسانی: <?php echo esc_html( $when ); ?><?php echo $s['last_error'] ? ' — <span style="color:#b3261e">خطا: ' . esc_html( $s['last_error'] ) . '</span>' : ''; ?></div>
+		<div class="bbprice-hero">
+			<div class="bbprice-hero-main">
+				<div class="bbprice-hero-label">نرخ فعلی دلار</div>
+				<div class="bbprice-hero-rate"><span id="bbprice-rate-num"><?php echo esc_html( number_format( $rate ) ); ?></span> <small>تومان</small></div>
+				<div class="bbprice-hero-sub">
+					<span class="bbprice-chip <?php echo 'auto' === $s['mode'] ? 'is-auto' : 'is-manual'; ?>"><?php echo 'auto' === $s['mode'] ? '⟳ خودکار' : '✎ دستی'; ?></span>
+					آخرین به‌روزرسانی: <?php echo esc_html( $when ); ?>
+				</div>
+				<?php if ( $s['last_error'] ) : ?>
+					<div class="bbprice-hero-err">⚠ <?php echo esc_html( $s['last_error'] ); ?></div>
+				<?php endif; ?>
+			</div>
+			<div class="bbprice-calc">
+				<div class="bbprice-calc-title">ماشین‌حساب زنده</div>
+				<label>قیمت دلاری</label>
+				<div class="bbprice-calc-row"><input type="number" id="bbprice-calc-usd" value="10" min="0" step="0.5"> <span>$</span></div>
+				<div class="bbprice-calc-eq">=</div>
+				<div class="bbprice-calc-out"><span id="bbprice-calc-out">—</span> <small><?php echo 'rial' === $s['store_unit'] ? 'ریال' : 'تومان'; ?></small></div>
+			</div>
 		</div>
 
 		<form method="post">
 			<?php wp_nonce_field( 'bbprice_settings' ); ?>
-			<table class="form-table">
-				<tr><th>حالت نرخ دلار</th><td>
-					<label><input type="radio" name="mode" value="manual" <?php checked( $s['mode'], 'manual' ); ?>> دستی (خودم وارد می‌کنم)</label>&nbsp;&nbsp;
-					<label><input type="radio" name="mode" value="auto" <?php checked( $s['mode'], 'auto' ); ?>> خودکار (از API گرفته شود)</label>
-				</td></tr>
-				<tr><th>نرخ دلار دستی (تومان)</th><td>
-					<input type="text" name="rate" value="<?php echo esc_attr( (int) $s['rate'] ); ?>" class="regular-text" dir="ltr">
-					<p class="description">فقط در حالت «دستی» استفاده می‌شود. مثلاً 92000</p>
-				</td></tr>
-				<tr><th>واحد قیمت فروشگاه</th><td>
-					<select name="store_unit">
-						<option value="toman" <?php selected( $s['store_unit'], 'toman' ); ?>>تومان</option>
-						<option value="rial" <?php selected( $s['store_unit'], 'rial' ); ?>>ریال</option>
-					</select>
-					<p class="description">واحدی که قیمت محصولات در ووکامرس با آن ذخیره می‌شود.</p>
-				</td></tr>
-				<tr><th>گِرد کردن قیمت (تومان)</th><td>
-					<input type="number" name="round_to" value="<?php echo esc_attr( $s['round_to'] ); ?>" min="0" step="500">
-					<p class="description">به نزدیک‌ترین این عدد گِرد می‌شود. 0 یعنی بدون گِرد کردن.</p>
-				</td></tr>
-				<tr><th>درصد سود</th><td>
-					<input type="number" name="margin" value="<?php echo esc_attr( $s['margin'] ); ?>" step="0.5"> ٪
-					<p class="description">اختیاری. روی قیمت دلاری اعمال می‌شود.</p>
-				</td></tr>
-				<tr><th>بازهٔ به‌روزرسانی خودکار</th><td>
-					<select name="interval">
-						<option value="hourly" <?php selected( $s['interval'], 'hourly' ); ?>>هر ساعت</option>
-						<option value="twicedaily" <?php selected( $s['interval'], 'twicedaily' ); ?>>دو بار در روز</option>
-						<option value="daily" <?php selected( $s['interval'], 'daily' ); ?>>روزی یک بار</option>
-					</select>
-				</td></tr>
-			</table>
+			<div class="bbprice-grid">
 
-			<h2>منبع نرخ خودکار</h2>
-			<table class="form-table">
-				<tr><th>منبع</th><td>
-					<label><input type="radio" name="source" value="tgju" <?php checked( $s['source'], 'tgju' ); ?>> دلار آزاد tgju (پیش‌فرض)</label>&nbsp;&nbsp;
-					<label><input type="radio" name="source" value="custom" <?php checked( $s['source'], 'custom' ); ?>> آدرس دلخواه</label>
-				</td></tr>
-				<tr><th>آدرس API دلخواه</th><td><input type="text" name="custom_url" value="<?php echo esc_attr( $s['custom_url'] ); ?>" class="large-text" dir="ltr" placeholder="https://..."></td></tr>
-				<tr><th>مسیر مقدار در JSON</th><td>
-					<input type="text" name="custom_path" value="<?php echo esc_attr( $s['custom_path'] ); ?>" class="regular-text" dir="ltr" placeholder="current.price_dollar_rl.p">
-					<p class="description">با نقطه جدا کنید. مثال بالا یعنی data[current][price_dollar_rl][p].</p>
-				</td></tr>
-				<tr><th>واحد مقدار API</th><td>
-					<select name="custom_unit">
-						<option value="rial" <?php selected( $s['custom_unit'], 'rial' ); ?>>ریال</option>
-						<option value="toman" <?php selected( $s['custom_unit'], 'toman' ); ?>>تومان</option>
-					</select>
-				</td></tr>
-			</table>
+				<div class="bbprice-card">
+					<h2>💲 نرخ دلار</h2>
+					<div class="bbprice-seg">
+						<label class="<?php echo checked( $s['mode'], 'manual', false ) ? 'on' : ''; ?>"><input type="radio" name="mode" value="manual" <?php checked( $s['mode'], 'manual' ); ?>>✎ دستی</label>
+						<label class="<?php echo checked( $s['mode'], 'auto', false ) ? 'on' : ''; ?>"><input type="radio" name="mode" value="auto" <?php checked( $s['mode'], 'auto' ); ?>>⟳ خودکار</label>
+					</div>
+					<label class="bbprice-f">نرخ دستی (تومان)
+						<input type="text" name="rate" id="bbprice-rate-input" value="<?php echo esc_attr( (int) $rate ); ?>" dir="ltr" placeholder="263900">
+					</label>
+					<p class="bbprice-hint">در حالت «دستی»، همین عدد ملاک محاسبه است.</p>
+				</div>
 
-			<p>
-				<button type="submit" name="bbprice_save" class="button button-primary">ذخیره و اعمال روی محصولات</button>
-				<button type="submit" name="bbprice_fetch" class="button">گرفتن نرخ از API الان</button>
-				<button type="submit" name="bbprice_recalc" class="button">محاسبهٔ دوبارهٔ همهٔ قیمت‌ها</button>
-			</p>
+				<div class="bbprice-card">
+					<h2>🧮 تبدیل قیمت</h2>
+					<label class="bbprice-f">واحد فروشگاه
+						<select name="store_unit" id="bbprice-unit">
+							<option value="toman" <?php selected( $s['store_unit'], 'toman' ); ?>>تومان</option>
+							<option value="rial" <?php selected( $s['store_unit'], 'rial' ); ?>>ریال</option>
+						</select>
+					</label>
+					<label class="bbprice-f">گِرد کردن (تومان)
+						<input type="number" name="round_to" id="bbprice-round" value="<?php echo esc_attr( $s['round_to'] ); ?>" min="0" step="500">
+					</label>
+					<label class="bbprice-f">درصد سود (٪)
+						<input type="number" name="margin" id="bbprice-margin" value="<?php echo esc_attr( $s['margin'] ); ?>" step="0.5">
+					</label>
+				</div>
+
+				<div class="bbprice-card">
+					<h2>⟳ به‌روزرسانی خودکار</h2>
+					<label class="bbprice-f">بازهٔ زمانی
+						<select name="interval">
+							<option value="hourly" <?php selected( $s['interval'], 'hourly' ); ?>>هر ساعت</option>
+							<option value="twicedaily" <?php selected( $s['interval'], 'twicedaily' ); ?>>دو بار در روز</option>
+							<option value="daily" <?php selected( $s['interval'], 'daily' ); ?>>روزی یک بار</option>
+						</select>
+					</label>
+					<label class="bbprice-f">منبع نرخ
+						<select name="source" id="bbprice-source">
+							<option value="tgju" <?php selected( $s['source'], 'tgju' ); ?>>دلار آزاد tgju (پیش‌فرض)</option>
+							<option value="custom" <?php selected( $s['source'], 'custom' ); ?>>آدرس دلخواه</option>
+						</select>
+					</label>
+				</div>
+
+				<div class="bbprice-card bbprice-custom" id="bbprice-custom-card">
+					<h2>🔗 API دلخواه</h2>
+					<label class="bbprice-f">آدرس API
+						<input type="text" name="custom_url" value="<?php echo esc_attr( $s['custom_url'] ); ?>" dir="ltr" placeholder="https://...">
+					</label>
+					<label class="bbprice-f">مسیر مقدار در JSON
+						<input type="text" name="custom_path" value="<?php echo esc_attr( $s['custom_path'] ); ?>" dir="ltr" placeholder="current.price_dollar_rl.p">
+					</label>
+					<label class="bbprice-f">واحد مقدار API
+						<select name="custom_unit">
+							<option value="rial" <?php selected( $s['custom_unit'], 'rial' ); ?>>ریال</option>
+							<option value="toman" <?php selected( $s['custom_unit'], 'toman' ); ?>>تومان</option>
+						</select>
+					</label>
+				</div>
+			</div>
+
+			<div class="bbprice-actions">
+				<button type="submit" name="bbprice_save" class="bbprice-btn primary">💾 ذخیره و اعمال روی محصولات</button>
+				<button type="submit" name="bbprice_fetch" class="bbprice-btn">⟳ گرفتن نرخ از API الان</button>
+				<button type="submit" name="bbprice_recalc" class="bbprice-btn ghost">🧮 محاسبهٔ دوبارهٔ همه</button>
+			</div>
 		</form>
 
-		<p style="color:#6b6352">راهنما: در صفحهٔ هر محصول، در بخش «عمومی» فیلد «قیمت دلاری ($)» را پر کنید. قیمت تومانی خودکار حساب می‌شود.</p>
+		<p class="bbprice-foot">در صفحهٔ هر محصول، بخش «عمومی»، فیلد <b>«قیمت دلاری ($)»</b> را پر کنید؛ قیمت تومانی خودکار حساب می‌شود.</p>
 	</div>
+
+	<style>
+		.bbprice-wrap{direction:rtl;text-align:right;max-width:980px;font-family:inherit}
+		.bbprice-wrap *{box-sizing:border-box}
+		.bbprice-head{display:flex;align-items:center;gap:12px;margin:10px 0 18px}
+		.bbprice-head h1{margin:0;font-size:24px;font-weight:800;color:#1f1a10}
+		.bbprice-ver{background:#f0ead6;color:#8c6b12;border-radius:20px;padding:3px 12px;font-size:12px;font-weight:700}
+		.bbprice-hero{display:grid;grid-template-columns:1.4fr 1fr;gap:18px;margin-bottom:20px}
+		@media(max-width:782px){.bbprice-hero{grid-template-columns:1fr}}
+		.bbprice-hero-main{background:linear-gradient(135deg,#1f1a10,#3a2f17);color:#fff;border-radius:20px;padding:24px 26px;position:relative;overflow:hidden}
+		.bbprice-hero-main:after{content:"$";position:absolute;left:18px;bottom:-18px;font-size:120px;font-weight:900;color:rgba(199,167,66,.15)}
+		.bbprice-hero-label{color:#e7d9a6;font-size:14px;margin-bottom:6px}
+		.bbprice-hero-rate{font-size:42px;font-weight:900;color:#f2d879;line-height:1.1}
+		.bbprice-hero-rate small{font-size:18px;color:#cbb971;font-weight:600}
+		.bbprice-hero-sub{margin-top:12px;color:#cfc6ad;font-size:13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+		.bbprice-chip{border-radius:20px;padding:3px 11px;font-weight:700;font-size:12px}
+		.bbprice-chip.is-auto{background:#1e7e34;color:#fff}.bbprice-chip.is-manual{background:#c7a742;color:#1f1a10}
+		.bbprice-hero-err{margin-top:10px;background:rgba(179,38,30,.2);color:#ffb4ae;border-radius:10px;padding:8px 12px;font-size:13px}
+		.bbprice-calc{background:#fff;border:1px solid #ece4cd;border-radius:20px;padding:20px}
+		.bbprice-calc-title{font-weight:800;color:#8c6b12;margin-bottom:12px}
+		.bbprice-calc label{display:block;font-size:13px;color:#6b6352;margin-bottom:6px}
+		.bbprice-calc-row{display:flex;align-items:center;gap:8px}
+		.bbprice-calc-row input{flex:1;border:1.5px solid #e3dcc6;border-radius:12px;padding:10px 12px;font-size:17px;text-align:center}
+		.bbprice-calc-row span{font-size:20px;font-weight:800;color:#a9831c}
+		.bbprice-calc-eq{text-align:center;color:#c7a742;font-size:22px;margin:6px 0}
+		.bbprice-calc-out{text-align:center;font-size:26px;font-weight:900;color:#1f1a10}
+		.bbprice-calc-out small{font-size:14px;color:#6b6352;font-weight:600}
+		.bbprice-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+		@media(max-width:782px){.bbprice-grid{grid-template-columns:1fr}}
+		.bbprice-card{background:#fff;border:1px solid #ece4cd;border-radius:18px;padding:20px 22px}
+		.bbprice-card h2{margin:0 0 14px;font-size:16px;font-weight:800;color:#1f1a10}
+		.bbprice-f{display:block;font-size:13px;font-weight:700;color:#3a3326;margin:12px 0 0}
+		.bbprice-f input,.bbprice-f select{width:100%;margin-top:6px;border:1.5px solid #e3dcc6;border-radius:12px;padding:11px 13px;font-size:15px;background:#fcfbf6}
+		.bbprice-f input:focus,.bbprice-f select:focus{outline:0;border-color:#a9831c;box-shadow:0 0 0 3px rgba(169,131,28,.15);background:#fff}
+		.bbprice-hint{color:#8a8169;font-size:12px;margin:10px 0 0}
+		.bbprice-seg{display:flex;gap:8px;background:#f4efe3;border-radius:14px;padding:5px}
+		.bbprice-seg label{flex:1;text-align:center;padding:9px;border-radius:10px;cursor:pointer;font-weight:700;color:#6b6352;font-size:14px}
+		.bbprice-seg label.on{background:#fff;color:#8c6b12;box-shadow:0 2px 6px rgba(0,0,0,.08)}
+		.bbprice-seg input{display:none}
+		.bbprice-actions{display:flex;gap:10px;flex-wrap:wrap;margin:22px 0 10px}
+		.bbprice-btn{border:0;border-radius:14px;padding:13px 22px;font-size:15px;font-weight:800;cursor:pointer;background:#f0ead6;color:#8c6b12}
+		.bbprice-btn.primary{background:linear-gradient(135deg,#c7a742,#a9831c);color:#fff;box-shadow:0 8px 20px rgba(169,131,28,.3)}
+		.bbprice-btn.ghost{background:#fff;border:1.5px solid #e3dcc6;color:#6b6352}
+		.bbprice-btn:hover{filter:brightness(1.04)}
+		.bbprice-foot{color:#6b6352;background:#fbf8ef;border:1px dashed #e3dcc6;border-radius:12px;padding:12px 16px;margin-top:8px}
+	</style>
+	<script>
+	(function(){
+		var unitSel=document.getElementById('bbprice-unit'),roundI=document.getElementById('bbprice-round'),marginI=document.getElementById('bbprice-margin');
+		var modeInputs=document.getElementsByName('mode'),manualRate=document.getElementById('bbprice-rate-input'),rateNum=document.getElementById('bbprice-rate-num');
+		var usd=document.getElementById('bbprice-calc-usd'),out=document.getElementById('bbprice-calc-out');
+		var serverRate=<?php echo (float) $rate; ?>;
+		function currentRate(){ // در حالت دستی از ورودی، وگرنه نرخ سرور
+			var mode='manual';for(var i=0;i<modeInputs.length;i++)if(modeInputs[i].checked)mode=modeInputs[i].value;
+			if(mode==='manual'){var v=parseFloat((manualRate.value||'').replace(/[^0-9.]/g,''));return v>0?v:serverRate;}
+			return serverRate;
+		}
+		function calc(){
+			var d=parseFloat(usd.value)||0,rate=currentRate(),margin=parseFloat(marginI.value)||0,step=parseInt(roundI.value)||0;
+			var t=d*rate*(1+margin/100);
+			if(step>0)t=Math.round(t/step)*step;else t=Math.round(t);
+			if(unitSel.value==='rial')t=t*10;
+			out.textContent=t>0?t.toLocaleString('fa-IR'):'—';
+			if(rateNum)rateNum.textContent=Math.round(currentRate()).toLocaleString('fa-IR');
+		}
+		[usd,unitSel,roundI,marginI,manualRate].forEach(function(el){if(el){el.addEventListener('input',calc);el.addEventListener('change',calc);}});
+		for(var i=0;i<modeInputs.length;i++)modeInputs[i].addEventListener('change',calc);
+		// نمایش/پنهان کارت API دلخواه
+		var src=document.getElementById('bbprice-source'),card=document.getElementById('bbprice-custom-card');
+		function toggleCustom(){card.style.display=(src.value==='custom')?'':'none';}
+		if(src){src.addEventListener('change',toggleCustom);toggleCustom();}
+		calc();
+	})();
+	</script>
 	<?php
 }
+
