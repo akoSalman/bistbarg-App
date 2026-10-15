@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       ورود و ثبت‌نام با موبایل بیست‌برگ (کاوه‌نگار)
  * Description:       ثبت‌نام و ورود مشتریان با شمارهٔ موبایل و کد پیامکی، سپس تکمیل نام و استان و شهر. فرم پیش‌فرض ووکامرس غیرفعال می‌شود. دارای API برای اپلیکیشن.
- * Version:           2.3.0
+ * Version:           2.4.0
  * Author:            Bistbarg
  * Requires at least: 5.8
  * Requires PHP:      7.4
@@ -11,7 +11,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'BBOTP_VERSION', '2.3.0' );
+define( 'BBOTP_VERSION', '2.4.0' );
 define( 'BBOTP_DIR', plugin_dir_path( __FILE__ ) );
 
 require_once BBOTP_DIR . 'iran-locations.php';
@@ -163,6 +163,30 @@ function bbotp_key( $prefix, $value ) {
 
 function bbotp_hash_code( $phone, $code ) {
 	return hash_hmac( 'sha256', $phone . '|' . $code, wp_salt( 'auth' ) );
+}
+
+/** توکن کوتاه و امضاشده برای احراز هویت مرحلهٔ تکمیل پروفایل (۱۵ دقیقه). */
+function bbotp_make_ptoken( $user_id ) {
+	$body = rtrim( strtr( base64_encode( wp_json_encode( array( 'u' => (int) $user_id, 'e' => time() + 900 ) ) ), '+/', '-_' ), '=' );
+	$sig  = rtrim( strtr( base64_encode( hash_hmac( 'sha256', $body, wp_salt( 'auth' ), true ) ), '+/', '-_' ), '=' );
+	return $body . '.' . $sig;
+}
+
+/** @return int  شناسهٔ کاربر معتبر، یا 0 */
+function bbotp_check_ptoken( $token ) {
+	if ( ! is_string( $token ) || false === strpos( $token, '.' ) ) {
+		return 0;
+	}
+	list( $body, $sig ) = explode( '.', $token, 2 );
+	$expected = rtrim( strtr( base64_encode( hash_hmac( 'sha256', $body, wp_salt( 'auth' ), true ) ), '+/', '-_' ), '=' );
+	if ( ! hash_equals( $expected, (string) $sig ) ) {
+		return 0;
+	}
+	$data = json_decode( base64_decode( strtr( $body, '-_', '+/' ) ), true );
+	if ( ! is_array( $data ) || empty( $data['e'] ) || $data['e'] < time() ) {
+		return 0;
+	}
+	return (int) $data['u'];
 }
 
 function bbotp_client_ip() {
@@ -395,14 +419,25 @@ add_action( 'rest_api_init', function () {
 			$out = bbotp_verify_code( $r->get_param( 'phone' ), $r->get_param( 'code' ) );
 			return is_wp_error( $out )
 				? new WP_REST_Response( array( 'ok' => false, 'message' => $out->get_error_message() ), 400 )
-				: new WP_REST_Response( array( 'ok' => true, 'is_new' => $out['is_new'], 'needs_profile' => $out['needs_profile'], 'nonce' => wp_create_nonce( 'wp_rest' ) ), 200 );
+				: new WP_REST_Response( array( 'ok' => true, 'is_new' => $out['is_new'], 'needs_profile' => $out['needs_profile'], 'token' => bbotp_make_ptoken( $out['user_id'] ) ), 200 );
 		},
 	) );
 	register_rest_route( 'bistbarg/v1', '/otp/profile', array(
 		'methods'             => 'POST',
-		'permission_callback' => 'is_user_logged_in',
+		'permission_callback' => '__return_true',
 		'callback'            => function ( WP_REST_Request $r ) {
-			$out = bbotp_save_profile( get_current_user_id(), $r->get_json_params() ?: $r->get_params() );
+			$uid = bbotp_check_ptoken( $r->get_param( 'token' ) );
+			if ( ! $uid ) {
+				$uid = get_current_user_id(); // اگر کوکی معتبر بود
+			}
+			if ( ! $uid ) {
+				return new WP_REST_Response( array( 'ok' => false, 'message' => 'نشست منقضی شده. دوباره وارد شوید.' ), 401 );
+			}
+			// مطمئن شو کاربر وارد است (کوکی ممکن است هنوز ست نشده باشد).
+			if ( get_current_user_id() !== $uid ) {
+				bbotp_login_user( $uid );
+			}
+			$out = bbotp_save_profile( $uid, $r->get_json_params() ?: $r->get_params() );
 			return is_wp_error( $out )
 				? new WP_REST_Response( array( 'ok' => false, 'message' => $out->get_error_message() ), 400 )
 				: new WP_REST_Response( array( 'ok' => true ), 200 );
@@ -434,7 +469,7 @@ function bbotp_shortcode( $atts = array() ) {
 	$start_profile = ( is_user_logged_in() && bbotp_needs_profile( get_current_user_id() ) ) ? '1' : '';
 	ob_start();
 	?>
-	<div class="bbotp-box" dir="rtl" data-rest="<?php echo esc_attr( $rest ); ?>" data-redirect="<?php echo esc_url( $redirect ); ?>" data-profile="<?php echo esc_attr( $start_profile ); ?>" data-nonce="<?php echo esc_attr( is_user_logged_in() ? wp_create_nonce( 'wp_rest' ) : '' ); ?>">
+	<div class="bbotp-box" dir="rtl" data-rest="<?php echo esc_attr( $rest ); ?>" data-redirect="<?php echo esc_url( $redirect ); ?>" data-profile="<?php echo esc_attr( $start_profile ); ?>" data-token="<?php echo esc_attr( is_user_logged_in() ? bbotp_make_ptoken( get_current_user_id() ) : '' ); ?>">
 		<?php if ( function_exists( 'get_custom_logo' ) && has_custom_logo() ) : ?>
 			<div class="bbotp-logo"><?php echo get_custom_logo(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></div>
 		<?php endif; ?>
@@ -496,7 +531,7 @@ function bbotp_shortcode( $atts = array() ) {
 	var DATA=<?php echo $locations; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON. ?>;
 	document.querySelectorAll('.bbotp-box[data-rest]').forEach(function(box){
 		if(box.dataset.bbotpInit)return;box.dataset.bbotpInit='1';
-		var rest=box.dataset.rest,redirect=box.dataset.redirect,nonce=box.dataset.nonce||'';
+		var rest=box.dataset.rest,redirect=box.dataset.redirect,token=box.dataset.token||'';
 		var steps={};box.querySelectorAll('.bbotp-step').forEach(function(s){steps[s.dataset.step]=s;});
 		var msg=box.querySelector('.bbotp-msg');
 		var phone=box.querySelector('#bbotp-phone'),code=box.querySelector('#bbotp-code');
@@ -507,7 +542,7 @@ function bbotp_shortcode( $atts = array() ) {
 		function say(t,ok){msg.textContent=t||'';msg.className='bbotp-msg'+(ok?' ok':'');}
 		function show(name){for(var k in steps)steps[k].style.display=(k===name?'':'none');say('');}
 		function busy(btn,on){if(on){btn.dataset.t=btn.textContent;btn.disabled=true;btn.textContent='لطفاً صبر کنید…';}else{btn.disabled=false;btn.textContent=btn.dataset.t;}}
-		function post(path,data){var h={'Content-Type':'application/json'};if(nonce)h['X-WP-Nonce']=nonce;return fetch(rest+path,{method:'POST',headers:h,credentials:'include',body:JSON.stringify(data)}).then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j};});});}
+		function post(path,data){if(token)data=Object.assign({token:token},data);return fetch(rest+path,{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify(data)}).then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j};});});}
 		var timer=null;
 		function startTimer(sec){clearInterval(timer);resend.disabled=true;var l=sec;timerEl.textContent=toFa(l);timer=setInterval(function(){l--;if(l<=0){clearInterval(timer);resend.disabled=false;resend.innerHTML='ارسال دوباره';}else timerEl.textContent=toFa(l);},1000);}
 
@@ -531,7 +566,7 @@ function bbotp_shortcode( $atts = array() ) {
 			else if(act==='edit')show('phone');
 			else if(act==='verify'){var c=(code.value||'').trim();if(c.replace(/\D/g,'').length<4){say('کد را کامل وارد کنید');return;}busy(btn,true);
 				post('/otp/verify',{phone:phone.value.trim(),code:c}).then(function(r){busy(btn,false);
-					if(r.ok&&r.j.ok){if(r.j.nonce)nonce=r.j.nonce;if(r.j.needs_profile)show('profile');else{say('ورود موفق. در حال انتقال…',true);setTimeout(function(){location.href=redirect;},700);}}
+					if(r.ok&&r.j.ok){if(r.j.token)token=r.j.token;if(r.j.needs_profile)show('profile');else{say('ورود موفق. در حال انتقال…',true);setTimeout(function(){location.href=redirect;},700);}}
 					else say(r.j.message||'کد نادرست است');}).catch(function(){busy(btn,false);say('خطا در ارتباط با سرور');});}
 			else if(act==='save'){
 				var payload={first_name:box.querySelector('#bbotp-first').value.trim(),last_name:box.querySelector('#bbotp-last').value.trim(),province:prov.value,city:city.value,address:box.querySelector('#bbotp-address').value.trim()};
