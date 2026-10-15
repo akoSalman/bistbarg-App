@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       قیمت‌گذاری دلاری بیست‌برگ
  * Description:       قیمت محصولات را به دلار وارد کنید؛ قیمت تومانی خودکار بر اساس نرخ دلار (خودکار از API یا دستی) محاسبه و با تغییر نرخ به‌روز می‌شود.
- * Version:           1.1.0
+ * Version:           1.2.0
  * Author:            Bistbarg
  * Requires at least: 5.8
  * Requires PHP:      7.4
@@ -11,7 +11,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'BBPRICE_VERSION', '1.1.0' );
+define( 'BBPRICE_VERSION', '1.2.0' );
 define( 'BBPRICE_CRON', 'bbprice_update_event' );
 
 /* -------------------------------------------------------------------------
@@ -310,6 +310,7 @@ add_action( 'woocommerce_save_product_variation', function ( $variation_id, $loo
 
 add_action( 'admin_menu', function () {
 	add_submenu_page( 'woocommerce', 'قیمت‌گذاری دلاری', 'قیمت‌گذاری دلاری', 'manage_woocommerce', 'bistbarg-pricing', 'bbprice_admin_page' );
+	add_submenu_page( 'woocommerce', 'جدول قیمت دلاری', 'جدول قیمت دلاری', 'manage_woocommerce', 'bistbarg-pricing-table', 'bbprice_table_page' );
 } );
 
 function bbprice_admin_page() {
@@ -538,3 +539,156 @@ function bbprice_admin_page() {
 	<?php
 }
 
+
+/* -------------------------------------------------------------------------
+ *  جدول قیمت‌ها
+ * ---------------------------------------------------------------------- */
+
+function bbprice_price_label( $product ) {
+	$s    = bbprice_settings();
+	$unit = 'rial' === $s['store_unit'] ? 'ریال' : 'تومان';
+	$price = $product->get_price();
+	if ( '' === $price || null === $price ) {
+		return '—';
+	}
+	return number_format( (float) $price ) . ' ' . $unit;
+}
+
+function bbprice_table_page() {
+	if ( ! current_user_can( 'manage_woocommerce' ) ) {
+		return;
+	}
+	$notice  = '';
+	$per_page = 30;
+
+	if ( isset( $_POST['bbprice_table_save'] ) && check_admin_referer( 'bbprice_table' ) ) {
+		$usd = isset( $_POST['usd'] ) && is_array( $_POST['usd'] ) ? wp_unslash( $_POST['usd'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput
+		$n   = 0;
+		foreach ( $usd as $id => $val ) {
+			$id  = (int) $id;
+			$val = preg_replace( '/[^0-9.]/', '', (string) $val );
+			$product = $id ? wc_get_product( $id ) : null;
+			if ( ! $product ) {
+				continue;
+			}
+			$product->update_meta_data( '_bbprice_usd', $val );
+			$product->save();
+			bbprice_apply_to_product( $id );
+			$n++;
+		}
+		$notice = '<div class="notice notice-success"><p>قیمت ' . (int) $n . ' محصول ذخیره و محاسبه شد.</p></div>';
+	}
+
+	$search = isset( $_GET['s'] ) ? sanitize_text_field( wp_unslash( $_GET['s'] ) ) : '';
+	$paged  = max( 1, isset( $_GET['paged'] ) ? (int) $_GET['paged'] : 1 );
+	$only   = isset( $_GET['only'] ) && '1' === $_GET['only']; // فقط دارای قیمت دلاری
+
+	$args = array(
+		'post_type'      => 'product',
+		'post_status'    => array( 'publish', 'draft', 'private' ),
+		'posts_per_page' => $per_page,
+		'paged'          => $paged,
+		's'              => $search,
+		'orderby'        => 'title',
+		'order'          => 'ASC',
+	);
+	if ( $only ) {
+		$args['meta_key']     = '_bbprice_usd'; // phpcs:ignore WordPress.DB.SlowDBQuery
+		$args['meta_compare'] = 'EXISTS';
+	}
+	$q = new WP_Query( $args );
+
+	$base_url = admin_url( 'admin.php?page=bistbarg-pricing-table' );
+	?>
+	<div class="wrap bbprice-wrap">
+		<div class="bbprice-head"><h1>📋 جدول قیمت دلاری</h1><span class="bbprice-ver">نرخ: <?php echo esc_html( number_format( (float) bbprice_settings()['rate'] ) ); ?> تومان</span></div>
+		<?php echo $notice; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+
+		<form method="get" class="bbprice-toolbar">
+			<input type="hidden" name="page" value="bistbarg-pricing-table">
+			<input type="search" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="جستجوی نام محصول…">
+			<label class="bbprice-only"><input type="checkbox" name="only" value="1" <?php checked( $only ); ?> onchange="this.form.submit()"> فقط دارای قیمت دلاری</label>
+			<button class="bbprice-btn">جستجو</button>
+		</form>
+
+		<form method="post">
+			<?php wp_nonce_field( 'bbprice_table' ); ?>
+			<table class="bbprice-table">
+				<thead><tr><th>نام محصول</th><th>قیمت دلاری ($)</th><th>قیمت فروشگاه</th></tr></thead>
+				<tbody>
+				<?php
+				if ( ! $q->have_posts() ) {
+					echo '<tr><td colspan="3" class="bbprice-empty">محصولی یافت نشد.</td></tr>';
+				}
+				while ( $q->have_posts() ) :
+					$q->the_post();
+					$product = wc_get_product( get_the_ID() );
+					if ( ! $product ) {
+						continue;
+					}
+					if ( $product->is_type( 'variable' ) ) :
+						?>
+						<tr class="bbprice-parent"><td colspan="3"><span class="bbprice-tag">متغیر</span> <?php echo esc_html( $product->get_name() ); ?> — <a href="<?php echo esc_url( get_edit_post_link( $product->get_id() ) ); ?>" target="_blank">ویرایش متغیرها</a></td></tr>
+						<?php
+						foreach ( $product->get_children() as $vid ) :
+							$v = wc_get_product( $vid );
+							if ( ! $v ) { continue; }
+							$attrs = implode( '، ', array_filter( $v->get_variation_attributes() ) );
+							?>
+							<tr>
+								<td class="bbprice-name bbprice-sub">↳ <?php echo esc_html( $attrs ? $attrs : ( '#' . $vid ) ); ?></td>
+								<td><input type="number" step="0.01" min="0" name="usd[<?php echo (int) $vid; ?>]" value="<?php echo esc_attr( $v->get_meta( '_bbprice_usd' ) ); ?>" class="bbprice-usd"></td>
+								<td class="bbprice-money"><?php echo esc_html( bbprice_price_label( $v ) ); ?></td>
+							</tr>
+						<?php endforeach; ?>
+					<?php else : ?>
+						<tr>
+							<td class="bbprice-name"><?php echo esc_html( $product->get_name() ); ?></td>
+							<td><input type="number" step="0.01" min="0" name="usd[<?php echo (int) $product->get_id(); ?>]" value="<?php echo esc_attr( $product->get_meta( '_bbprice_usd' ) ); ?>" class="bbprice-usd"></td>
+							<td class="bbprice-money"><?php echo esc_html( bbprice_price_label( $product ) ); ?></td>
+						</tr>
+					<?php endif; ?>
+				<?php endwhile; wp_reset_postdata(); ?>
+				</tbody>
+			</table>
+
+			<div class="bbprice-actions">
+				<button type="submit" name="bbprice_table_save" class="bbprice-btn primary">💾 ذخیرهٔ قیمت‌های این صفحه</button>
+			</div>
+		</form>
+
+		<?php
+		$total_pages = (int) $q->max_num_pages;
+		if ( $total_pages > 1 ) {
+			$args_link = array_filter( array( 's' => $search, 'only' => $only ? '1' : '' ) );
+			echo '<div class="bbprice-pager">';
+			for ( $i = 1; $i <= $total_pages; $i++ ) {
+				$url = add_query_arg( array_merge( $args_link, array( 'paged' => $i ) ), $base_url );
+				echo '<a class="' . ( $i === $paged ? 'on' : '' ) . '" href="' . esc_url( $url ) . '">' . esc_html( $i ) . '</a>';
+			}
+			echo '</div>';
+		}
+		?>
+
+		<style>
+			.bbprice-toolbar{display:flex;gap:10px;align-items:center;margin:14px 0;flex-wrap:wrap}
+			.bbprice-toolbar input[type=search]{border:1.5px solid #e3dcc6;border-radius:12px;padding:10px 14px;min-width:260px;font-size:14px}
+			.bbprice-only{color:#6b6352;font-size:13px}
+			.bbprice-table{width:100%;border-collapse:separate;border-spacing:0;background:#fff;border:1px solid #ece4cd;border-radius:16px;overflow:hidden}
+			.bbprice-table th{background:#1f1a10;color:#f2d879;padding:13px 16px;text-align:right;font-size:14px}
+			.bbprice-table td{padding:11px 16px;border-top:1px solid #f1ecdc;font-size:14px;color:#2a2518}
+			.bbprice-table tr:hover td{background:#fcfaf1}
+			.bbprice-parent td{background:#f6efd9 !important;font-weight:700;color:#8c6b12}
+			.bbprice-tag{background:#c7a742;color:#1f1a10;border-radius:14px;padding:2px 10px;font-size:11px;font-weight:800}
+			.bbprice-sub{color:#6b6352}
+			.bbprice-usd{width:120px;border:1.5px solid #e3dcc6;border-radius:10px;padding:8px 10px;text-align:center;font-size:14px}
+			.bbprice-usd:focus{outline:0;border-color:#a9831c;box-shadow:0 0 0 3px rgba(169,131,28,.15)}
+			.bbprice-money{font-weight:700;color:#1f1a10;white-space:nowrap}
+			.bbprice-empty{text-align:center;color:#8a8169;padding:30px}
+			.bbprice-pager{display:flex;gap:6px;flex-wrap:wrap;margin:16px 0}
+			.bbprice-pager a{min-width:36px;text-align:center;padding:7px 10px;border:1px solid #e3dcc6;border-radius:10px;color:#6b6352;text-decoration:none}
+			.bbprice-pager a.on{background:#a9831c;color:#fff;border-color:#a9831c}
+		</style>
+	</div>
+	<?php
+}
