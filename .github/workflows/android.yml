@@ -74,6 +74,7 @@ jobs:
           cp app/build/outputs/apk/debug/app-debug.apk dist/bistbarg.apk
           (cd wordpress-plugin && zip -qr ../dist/bistbarg-push.zip bistbarg-push)
           (cd wordpress-plugin && zip -qr ../dist/bistbarg-otp.zip bistbarg-otp)
+          (cd wordpress-plugin && zip -qr ../dist/bistbarg-pricing.zip bistbarg-pricing)
           # Ship the socket server with its one dependency (ws) so the server needs no npm access.
           (cd socket-server && rm -rf node_modules && npm ci --omit=dev --no-audit --no-fund >/dev/null \
             && zip -qr ../dist/bistbarg-socket.zip server.js package.json package-lock.json node_modules \
@@ -100,6 +101,8 @@ jobs:
             (WordPress admin → Plugins → Add New → Upload Plugin).
 
             **bistbarg-otp.zip** is the WordPress plugin for phone-number (SMS OTP) login/registration via Kavenegar.
+
+            **bistbarg-pricing.zip** is the WordPress plugin for USD-based product pricing that auto-converts to Toman by the dollar rate.
 
             **bistbarg-socket.zip** is the real-time socket server to run on the site's server.
             Install it on the server (as root) with:
