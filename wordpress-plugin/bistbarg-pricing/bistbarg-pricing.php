@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       قیمت دلاری مدیا
  * Description:       قیمت محصولات را به دلار وارد کنید؛ قیمت تومانی خودکار بر اساس نرخ دلار (خودکار از API یا دستی) محاسبه و با تغییر نرخ به‌روز می‌شود. دارای جدول قیمت با تصویر محصول.
- * Version:           1.4.0
+ * Version:           1.4.1
  * Author:            Bistbarg
  * Requires at least: 5.8
  * Requires PHP:      7.4
@@ -11,7 +11,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'BBPRICE_VERSION', '1.4.0' );
+define( 'BBPRICE_VERSION', '1.4.1' );
 define( 'BBPRICE_DEV_PHONE', '09031784732' );
 define( 'BBPRICE_CRON', 'bbprice_update_event' );
 
@@ -618,7 +618,8 @@ function bbprice_admin_page() {
 		.bbprice-f input:focus,.bbprice-f select:focus{outline:0;border-color:#a9831c;box-shadow:0 0 0 3px rgba(169,131,28,.15);background:#fff}
 		.bbprice-hint{color:#8a8169;font-size:12px;margin:10px 0 0}
 		.bbprice-seg{display:flex;gap:8px;background:#f4efe3;border-radius:14px;padding:5px}
-		.bbprice-seg label{flex:1;text-align:center;padding:9px;border-radius:10px;cursor:pointer;font-weight:700;color:#6b6352;font-size:14px}
+		.bbprice-seg label{flex:1;text-align:center;padding:9px;border-radius:10px;cursor:pointer;font-weight:700;color:#6b6352;font-size:14px;user-select:none;transition:background .12s,color .12s}
+		.bbprice-seg label:hover{color:#8c6b12}
 		.bbprice-seg label.on{background:#fff;color:#8c6b12;box-shadow:0 2px 6px rgba(0,0,0,.08)}
 		.bbprice-seg input{display:none}
 		.bbprice-actions{display:flex;gap:10px;flex-wrap:wrap;margin:22px 0 10px}
@@ -648,7 +649,9 @@ function bbprice_admin_page() {
 			if(rateNum)rateNum.textContent=Math.round(currentRate()).toLocaleString('fa-IR');
 		}
 		[usd,unitSel,roundI,marginI,manualRate].forEach(function(el){if(el){el.addEventListener('input',calc);el.addEventListener('change',calc);}});
-		for(var i=0;i<modeInputs.length;i++)modeInputs[i].addEventListener('change',calc);
+		function syncSeg(){for(var i=0;i<modeInputs.length;i++){var lab=modeInputs[i].closest('label');if(lab)lab.classList.toggle('on',modeInputs[i].checked);}}
+		for(var i=0;i<modeInputs.length;i++)modeInputs[i].addEventListener('change',function(){syncSeg();calc();});
+		syncSeg();
 		// نمایش/پنهان کارت API دلخواه
 		var src=document.getElementById('bbprice-source'),card=document.getElementById('bbprice-custom-card');
 		function toggleCustom(){card.style.display=(src.value==='custom')?'':'none';}
