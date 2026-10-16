@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       قیمت دلاری مدیا
  * Description:       قیمت محصولات را به دلار وارد کنید؛ قیمت تومانی خودکار بر اساس نرخ دلار (خودکار از API یا دستی) محاسبه و با تغییر نرخ به‌روز می‌شود. دارای جدول قیمت با تصویر محصول.
- * Version:           1.3.0
+ * Version:           1.4.0
  * Author:            Bistbarg
  * Requires at least: 5.8
  * Requires PHP:      7.4
@@ -11,7 +11,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'BBPRICE_VERSION', '1.3.0' );
+define( 'BBPRICE_VERSION', '1.4.0' );
 define( 'BBPRICE_DEV_PHONE', '09031784732' );
 define( 'BBPRICE_CRON', 'bbprice_update_event' );
 
@@ -194,7 +194,94 @@ function bbprice_refresh_rate_and_prices() {
 	}
 	bbprice_update_settings( array( 'rate' => $rate, 'updated_at' => time(), 'last_error' => '' ) );
 	bbprice_recalculate_all();
+	bbprice_clear_caches();
 	return true;
+}
+
+/** کش صفحات را پاک می‌کند تا قیمت جدید فوری دیده شود. */
+function bbprice_clear_caches() {
+	if ( function_exists( 'wc_delete_product_transients' ) ) {
+		wc_delete_product_transients();
+	}
+	if ( function_exists( 'rocket_clean_domain' ) ) {
+		rocket_clean_domain(); // WP Rocket
+	}
+	if ( has_action( 'litespeed_purge_all' ) ) {
+		do_action( 'litespeed_purge_all' ); // LiteSpeed Cache
+	}
+	if ( function_exists( 'w3tc_flush_all' ) ) {
+		w3tc_flush_all(); // W3 Total Cache
+	}
+	if ( function_exists( 'wp_cache_clear_cache' ) ) {
+		wp_cache_clear_cache(); // WP Super Cache
+	}
+}
+
+function bbprice_interval_seconds() {
+	switch ( bbprice_settings()['interval'] ) {
+		case 'daily':      return DAY_IN_SECONDS;
+		case 'twicedaily': return 12 * HOUR_IN_SECONDS;
+		default:           return HOUR_IN_SECONDS;
+	}
+}
+
+/**
+ * هستهٔ به‌روزرسانی خودکار مستقل از WP-Cron:
+ * اگر نرخ کهنه شده باشد، در پس‌زمینه (بدون معطل کردن بازدیدکننده) تازه می‌شود.
+ */
+function bbprice_maybe_auto_refresh( $blocking = false ) {
+	$s = bbprice_settings();
+	if ( 'auto' !== $s['mode'] ) {
+		return;
+	}
+	if ( ( time() - (int) $s['updated_at'] ) < bbprice_interval_seconds() ) {
+		return; // هنوز تازه است
+	}
+	if ( get_transient( 'bbprice_lock' ) ) {
+		return; // یک درخواست دیگر در حال انجام است
+	}
+	set_transient( 'bbprice_lock', 1, 180 );
+
+	if ( $blocking ) {
+		bbprice_refresh_rate_and_prices();
+		delete_transient( 'bbprice_lock' );
+		return;
+	}
+	// اجرای غیرمسدودکننده از طریق لوپ‌بک تا بازدیدکننده منتظر نماند.
+	$key = get_option( 'bbprice_cron_key' );
+	if ( ! $key ) {
+		$key = wp_generate_password( 24, false, false );
+		update_option( 'bbprice_cron_key', $key );
+	}
+	wp_remote_get(
+		add_query_arg(
+			array( 'action' => 'bbprice_cron_run', 'key' => $key ),
+			admin_url( 'admin-ajax.php' )
+		),
+		array( 'blocking' => false, 'timeout' => 0.01, 'sslverify' => false )
+	);
+}
+
+// در هر بازدیدی که نرخ کهنه باشد، در پس‌زمینه تازه می‌شود (جایگزین مطمئن WP-Cron).
+add_action( 'init', function () {
+	if ( wp_doing_ajax() || wp_doing_cron() || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
+		return;
+	}
+	bbprice_maybe_auto_refresh( is_admin() );
+}, 99 );
+
+// نقطهٔ اجرای پس‌زمینه (لوپ‌بک).
+add_action( 'wp_ajax_nopriv_bbprice_cron_run', 'bbprice_cron_run_handler' );
+add_action( 'wp_ajax_bbprice_cron_run', 'bbprice_cron_run_handler' );
+function bbprice_cron_run_handler() {
+	// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- محافظت با کلید مخفی.
+	$key = isset( $_GET['key'] ) ? sanitize_text_field( wp_unslash( $_GET['key'] ) ) : '';
+	if ( ! $key || ! hash_equals( (string) get_option( 'bbprice_cron_key' ), $key ) ) {
+		wp_die( '', '', array( 'response' => 403 ) );
+	}
+	bbprice_refresh_rate_and_prices();
+	delete_transient( 'bbprice_lock' );
+	wp_die( 'ok', '', array( 'response' => 200 ) );
 }
 
 /* -------------------------------------------------------------------------
@@ -398,6 +485,16 @@ function bbprice_admin_page() {
 				<?php if ( $s['last_error'] ) : ?>
 					<div class="bbprice-hero-err">⚠ <?php echo esc_html( $s['last_error'] ); ?></div>
 				<?php endif; ?>
+				<?php
+				if ( 'auto' === $s['mode'] ) {
+					$next   = wp_next_scheduled( BBPRICE_CRON );
+					$cronok = $next ? 'بله (نوبت بعدی: ' . esc_html( wp_date( 'H:i', $next ) ) . ')' : 'زمان‌بندی نشده';
+					$dis    = ( defined( 'DISABLE_WP_CRON' ) && DISABLE_WP_CRON ) ? ' — WP-Cron خاموش است؛ کرون سرور لازم است' : '';
+					echo '<div class="bbprice-hero-diag">⟳ به‌روزرسانی هر ' .
+						esc_html( 'hourly' === $s['interval'] ? 'ساعت' : ( 'daily' === $s['interval'] ? 'روز' : '۱۲ ساعت' ) ) .
+						' · زمان‌بندی: ' . $cronok . esc_html( $dis ) . '</div>';
+				}
+				?>
 			</div>
 			<div class="bbprice-calc">
 				<div class="bbprice-calc-title">ماشین‌حساب زنده</div>
@@ -502,6 +599,7 @@ function bbprice_admin_page() {
 		.bbprice-chip{border-radius:20px;padding:3px 11px;font-weight:700;font-size:12px}
 		.bbprice-chip.is-auto{background:#1e7e34;color:#fff}.bbprice-chip.is-manual{background:#c7a742;color:#1f1a10}
 		.bbprice-hero-err{margin-top:10px;background:rgba(179,38,30,.2);color:#ffb4ae;border-radius:10px;padding:8px 12px;font-size:13px}
+		.bbprice-hero-diag{margin-top:10px;color:#bcae82;font-size:12px}
 		.bbprice-calc{background:#fff;border:1px solid #ece4cd;border-radius:20px;padding:20px}
 		.bbprice-calc-title{font-weight:800;color:#8c6b12;margin-bottom:12px}
 		.bbprice-calc label{display:block;font-size:13px;color:#6b6352;margin-bottom:6px}
